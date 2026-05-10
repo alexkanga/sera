@@ -274,3 +274,45 @@ Stage Summary:
 - Middleware permissions updated for ACBF API routes (acbf:read)
 - Dynamic module badge in header (Module 1 / Module 2 / Module 3 / Module 4)
 - Footer updated to reflect all four modules
+
+---
+Task ID: 5-api
+Agent: Module 5 API Agent
+Task: Module 5 — Gestion des PTA individuels (Activities API Routes)
+
+Work Log:
+- Read worklog.md for project context and directions/strategic-axes/acbf API patterns ✅
+- Read Prisma schema to confirm Activity model and all relationships ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Created `src/app/api/activities/route.ts` ✅
+  - GET /api/activities — list with search (title/activityCode case-insensitive), status filter (active/archived/all), directionId filter, responsibleId filter, primaryAxisId filter, acbfDomainId filter, priority filter, validationStatus filter, activityStatus filter, pagination (default 20)
+  - Include related: responsible (name, email, ptaCode), direction (code, name), primaryAxis (code, name), acbfDomain (code, name), validator (name, email)
+  - POST /api/activities — create with Zod validation for all Activity model fields
+  - Auto-generate activityCode if not provided (format: ACT-YYYY-XXX with incrementing counter)
+  - Verify responsibleId, directionId, primaryAxisId, secondaryAxisId, acbfDomainId, acbfDeliverableId, validatorId existence
+  - Set createdById to current user
+  - Audit log: CREATE action
+  - Permission: pta:create
+- Created `src/app/api/activities/[id]/route.ts` ✅
+  - GET /api/activities/[id] — detail with all relations (responsible, direction, primaryAxis, secondaryAxis, acbfDomain, acbfDeliverable, validator, createdBy, updatedBy)
+  - PUT /api/activities/[id] — partial update with Zod validation, unique activityCode check, foreign key existence checks, isLocked guard (admin:* only), oldValue/newValue comparison audit log, updatedById set to current user
+  - PATCH /api/activities/[id] — action-based:
+    - "archive": soft delete (deletedAt=now, isActive=false), audit log, permission: pta:archive
+    - "restore": unarchive (deletedAt=null, isActive=true), audit log, permission: pta:archive
+    - "submit": set validationStatus="Soumis", audit log, permission: pta:submit
+    - "validate": set validationStatus="Validé" (only from Soumis), audit log, permission: pta:validate
+    - "reject": set validationStatus="Rejeté" (only from Soumis), audit log, permission: pta:validate
+- Updated `src/middleware.ts`: Added "/api/activities": "pta:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 5 API routes fully implemented with complete CRUD operations
+- Activities list API: rich filtering (9 filters), pagination, search, related data inclusion
+- Activities create API: full Zod validation, auto-generated codes, all FK existence checks
+- Activities detail API: all relations loaded including secondaryAxis, acbfDeliverable, createdBy, updatedBy
+- Activities update API: partial update with isLocked guard, comprehensive audit logging with oldValue/newValue
+- Activities actions API: 5 actions (archive/restore/submit/validate/reject) with appropriate permission checks
+- All permission codes: pta:read, pta:create, pta:update, pta:archive, pta:submit, pta:validate
+- Middleware permissions updated for activities API route (pta:read)
+- Follows exact same patterns as existing directions/strategic-axes/acbf-domains API routes
