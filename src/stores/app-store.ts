@@ -16,6 +16,7 @@ export type AppSection =
   | "pta-consolide"
   | "evidence"
   | "raci"
+  | "gantt"
   | "profile"
   | "change-password";
 
