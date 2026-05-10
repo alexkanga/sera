@@ -51,16 +51,19 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const include: Record<string, unknown> = {
-      headUser: true,
+    const baseInclude = {
+      headUser: true as const,
     };
 
-    if (includeUnits) {
-      include.units = {
-        where: { deletedAt: null },
-        orderBy: { name: "asc" },
-      };
-    }
+    const include = includeUnits
+      ? {
+          ...baseInclude,
+          units: {
+            where: { deletedAt: null },
+            orderBy: { name: "asc" as const },
+          },
+        }
+      : baseInclude;
 
     const [directions, total] = await Promise.all([
       db.direction.findMany({
@@ -73,7 +76,21 @@ export async function GET(request: NextRequest) {
       db.direction.count({ where }),
     ]);
 
-    const formattedDirections = directions.map((direction) => ({
+    type DirectionWithHead = {
+      id: string;
+      code: string;
+      name: string;
+      description: string | null;
+      headUserId: string | null;
+      isActive: boolean;
+      deletedAt: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      headUser: { id: string; name: string; email: string; position: string | null } | null;
+      units?: { id: string; code: string; name: string; isActive: boolean }[];
+    };
+
+    const formattedDirections = (directions as DirectionWithHead[]).map((direction) => ({
       id: direction.id,
       code: direction.code,
       name: direction.name,
@@ -91,9 +108,9 @@ export async function GET(request: NextRequest) {
       deletedAt: direction.deletedAt,
       createdAt: direction.createdAt,
       updatedAt: direction.updatedAt,
-      ...(includeUnits
+      ...(includeUnits && direction.units
         ? {
-            units: direction.units.map((unit: { id: string; code: string; name: string; isActive: boolean }) => ({
+            units: direction.units.map((unit) => ({
               id: unit.id,
               code: unit.code,
               name: unit.name,
@@ -213,7 +230,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Données invalides", details: error.errors },
+        { error: "Données invalides", details: error.issues },
         { status: 400 }
       );
     }

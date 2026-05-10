@@ -1542,7 +1542,7 @@ export function ActivitiesSection() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Créé par</p>
-                <p className="text-sm text-slate-900 dark:text-white mt-0.5">{(selectedActivity as Record<string, unknown>).createdBy && typeof (selectedActivity as Record<string, unknown>).createdBy === "object" ? ((selectedActivity as Record<string, { name?: string }>).createdBy?.name || "—") : "—"}</p>
+                <p className="text-sm text-slate-900 dark:text-white mt-0.5">{(selectedActivity as unknown as Record<string, unknown>).createdBy && typeof (selectedActivity as unknown as Record<string, unknown>).createdBy === "object" ? ((selectedActivity as unknown as Record<string, { name?: string }>).createdBy?.name || "—") : "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Créé le</p>
@@ -1550,7 +1550,7 @@ export function ActivitiesSection() {
               </div>
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Modifié par</p>
-                <p className="text-sm text-slate-900 dark:text-white mt-0.5">{(selectedActivity as Record<string, unknown>).updatedBy && typeof (selectedActivity as Record<string, unknown>).updatedBy === "object" ? ((selectedActivity as Record<string, { name?: string }>).updatedBy?.name || "—") : "—"}</p>
+                <p className="text-sm text-slate-900 dark:text-white mt-0.5">{(selectedActivity as unknown as Record<string, unknown>).updatedBy && typeof (selectedActivity as unknown as Record<string, unknown>).updatedBy === "object" ? ((selectedActivity as unknown as Record<string, { name?: string }>).updatedBy?.name || "—") : "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Modifié le</p>
