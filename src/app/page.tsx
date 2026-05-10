@@ -21,6 +21,7 @@ import {
   BookOpen,
   FileCheck,
   ClipboardList,
+  BarChart3,
 } from "lucide-react";
 
 import { useAppStore, type AppSection } from "@/stores/app-store";
@@ -38,6 +39,7 @@ import { StrategicAxesSection } from "@/components/sections/strategic-axes-secti
 import { AcbfDomainsSection } from "@/components/sections/acbf-domains-section";
 import { AcbfDeliverablesSection } from "@/components/sections/acbf-deliverables-section";
 import { ActivitiesSection } from "@/components/sections/activities-section";
+import { PtaConsolideSection } from "@/components/sections/pta-consolide-section";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -120,6 +122,15 @@ const ptaItems: {
   { section: "activities", label: "Mes activités PTA", icon: ClipboardList },
 ];
 
+// Navigation items for Module 6
+const consolideItems: {
+  section: AppSection;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { section: "pta-consolide", label: "PTA consolidé", icon: BarChart3 },
+];
+
 const accountItems: {
   section: AppSection;
   label: string;
@@ -156,6 +167,8 @@ function SectionContent({ section }: { section: AppSection }) {
       return <AcbfDeliverablesSection />;
     case "activities":
       return <ActivitiesSection />;
+    case "pta-consolide":
+      return <PtaConsolideSection />;
     case "profile":
       return <ProfileSection />;
     case "change-password":
@@ -167,7 +180,7 @@ function SectionContent({ section }: { section: AppSection }) {
 
 // Get section title for the header
 function getSectionTitle(section: AppSection): string {
-  const item = [...navItems, ...orgItems, ...strategyItems, ...acbfItems, ...ptaItems, ...accountItems].find((i) => i.section === section);
+  const item = [...navItems, ...orgItems, ...strategyItems, ...acbfItems, ...ptaItems, ...consolideItems, ...accountItems].find((i) => i.section === section);
   return item?.label ?? "Tableau de bord";
 }
 
@@ -401,6 +414,36 @@ export default function HomePage() {
 
           <SidebarSeparator />
 
+          {/* Module 6 — PTA Consolidé */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Module 6 — Consolidé
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {consolideItems.map((item) => (
+                  <SidebarMenuItem key={item.section}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.section}
+                      onClick={() => setCurrentSection(item.section)}
+                      tooltip={item.label}
+                      className={
+                        currentSection === item.section
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
           {/* Account Group */}
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -522,7 +565,7 @@ export default function HomePage() {
               variant="secondary"
               className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 text-[10px] px-1.5 py-0"
             >
-              {["activities"].includes(currentSection) ? "Module 5" : ["acbf-domains", "acbf-deliverables"].includes(currentSection) ? "Module 4" : ["strategic-axes"].includes(currentSection) ? "Module 3" : ["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
+              {["pta-consolide"].includes(currentSection) ? "Module 6" : ["activities"].includes(currentSection) ? "Module 5" : ["acbf-domains", "acbf-deliverables"].includes(currentSection) ? "Module 4" : ["strategic-axes"].includes(currentSection) ? "Module 3" : ["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
             </Badge>
           </div>
 
@@ -589,7 +632,7 @@ export default function HomePage() {
           <footer className="mt-auto border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 dark:text-slate-500">
               <p>&copy; {new Date().getFullYear()} AAEA — African Water and Sanitation Association</p>
-              <p>AAEA Pilotage 360 — Modules 1, 2, 3, 4 &amp; 5</p>
+              <p>AAEA Pilotage 360 — Modules 1, 2, 3, 4, 5 &amp; 6</p>
             </div>
           </footer>
         </div>

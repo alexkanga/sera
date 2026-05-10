@@ -13,6 +13,7 @@ export type AppSection =
   | "acbf-domains"
   | "acbf-deliverables"
   | "activities"
+  | "pta-consolide"
   | "profile"
   | "change-password";
 

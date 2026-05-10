@@ -17,6 +17,7 @@ const routePermissions: Record<string, string> = {
   "/api/acbf-domains": "acbf:read",
   "/api/acbf-deliverables": "acbf:read",
   "/api/activities": "pta:read",
+  "/api/pta-consolide": "pta:read",
 };
 
 export async function middleware(request: NextRequest) {

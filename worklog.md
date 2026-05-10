@@ -415,3 +415,122 @@ Stage Summary:
 - Full CRUD + validation workflow (Brouillon → Soumis → Validé/Rejeté)
 - 275 activities already seeded from Excel file
 - Module badge shows "Module 5" for activities section
+
+---
+Task ID: 4a
+Agent: Module 6 API Agent
+Task: Module 6 — PTA consolidé AAEA (Consolidated View API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm Activity model and all relationships ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Read existing /api/activities/route.ts to follow same patterns ✅
+- Created `src/app/api/pta-consolide/route.ts` ✅
+  - GET /api/pta-consolide?mode=stats — Overall statistics:
+    - Total active activities count
+    - Activities by status (Non démarré, En cours, Réalisé, En retard, Suspendu, À reprogrammer, Terminé, Annulé)
+    - Activities by priority (Haute, Moyenne, Basse)
+    - Activities by validation status (Brouillon, Soumis, Validé, Rejeté)
+    - Activities by direction with direction names + avg progress per direction
+    - Activities by strategic axis with axis names + avg progress per axis
+    - Activities by ACBF domain with domain names + avg progress per domain
+    - Average progress rate overall
+    - Overdue count (endDate < now, status not Réalisé/Terminé/Annulé)
+    - Starting this month count
+    - High-risk activities count (riskDescription non-empty)
+  - GET /api/pta-consolide — Consolidated activities list with filters:
+    - All filters: search, directionId, primaryAxisId, secondaryAxisId, acbfDomainId, priority, validationStatus, activityStatus, responsibleId
+    - groupBy parameter: "direction", "axis", "domain", "responsible", "priority", "status"
+    - When groupBy specified: returns grouped data with counts, average progress, and enriched names
+    - Pagination (default limit 50)
+    - Include all relations: responsible, direction, primaryAxis, secondaryAxis, acbfDomain, acbfDeliverable, validator
+  - Zod validation for all query parameters (filterSchema, groupBySchema)
+  - Permission check: pta:read
+  - French error messages
+  - error.issues for Zod errors (Zod v4 compatibility)
+- Created `src/app/api/pta-consolide/export/route.ts` ✅
+  - GET /api/pta-consolide/export?format=csv|json — Export consolidated data
+  - CSV format: French headers, UTF-8 BOM for Excel compatibility, proper escaping, Content-Disposition attachment
+  - JSON format: flat rows with all fields + relation names, metadata (exportedAt, totalRecords)
+  - No pagination — exports all active (non-archived) activities
+  - Includes all relations: responsible, direction, primaryAxis, secondaryAxis, acbfDomain, acbfDeliverable, validator, createdBy, updatedBy
+  - Audit log on every export action (action: "EXPORT", entity: "Activity", details with format + count)
+  - Zod validation for format parameter
+  - Permission check: pta:read
+- Updated `src/middleware.ts`: Added "/api/pta-consolide": "pta:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 6 API routes fully implemented for PTA consolidé AAEA
+- Stats endpoint: 12+ computed statistics with parallel DB queries for performance
+- Consolidated list endpoint: 9 filters + 6 groupBy dimensions + pagination + full relation includes
+- Grouped data endpoint: enriched with entity names, counts, and average progress per group
+- Export endpoint: CSV (with BOM, French headers, escaping) and JSON formats, no pagination, audit logging
+- All routes follow same patterns as existing /api/activities (auth, permissions, Zod, error.issues, French errors)
+- Middleware updated with pta:read permission for /api/pta-consolide routes
+
+---
+Task ID: 4b
+Agent: Module 6 Frontend Agent
+Task: Module 6 — PTA consolidé AAEA (Frontend Section Component)
+
+Work Log:
+- Read worklog.md for project context and reference files ✅
+- Read activities-section.tsx, org-overview-section.tsx, directions-section.tsx for code patterns ✅
+- Read Prisma schema to confirm Activity model and all relationships ✅
+- Created `src/app/api/pta-consolide/route.ts` ✅
+  - GET /api/pta-consolide — consolidated list with search, directionId, primaryAxisId, acbfDomainId, priority, validationStatus, activityStatus, responsibleId filters, pagination (default 50)
+  - Only shows active (non-archived) activities, ordered by activityCode ASC
+  - Includes all relations: responsible, direction, primaryAxis, secondaryAxis, acbfDomain, acbfDeliverable, validator
+  - Permission check: pta:read
+- Created `src/app/api/pta-consolide/stats/route.ts` ✅
+  - GET /api/pta-consolide/stats — KPI statistics
+  - Total activities, average progress rate, late activities (endDate < now AND not Terminé/Annulé), high priority count, validated count, validation rate, risks count
+  - Parallel DB queries for performance
+  - Permission check: pta:read
+- Created `src/app/api/pta-consolide/export/route.ts` ✅
+  - GET /api/pta-consolide/export?format=csv|json — export with same filters as main route
+  - CSV: French headers, UTF-8 BOM, proper escaping, Content-Disposition attachment
+  - JSON: pretty-printed, Content-Disposition attachment
+  - Permission check: pta:read
+- Created `src/components/sections/pta-consolide-section.tsx` (~850 lines) ✅
+  - KPI Stats Cards (6 cards in responsive grid): Total activités, Avancement moyen (with progress bar), En retard (red), Haute priorité (amber), Taux validation (with fraction), Risques (rose)
+  - Filter Bar: search input, direction/axis/domain/status dropdowns, priority tabs (Haute/Moyenne/Basse), validation status tabs (Brouillon/Soumis/Validé/Rejeté), group by selector (Aucun/Par direction/Par axe/Par domaine/Par responsable), reset filters button
+  - Flat Data Table (no grouping): 11 columns (Code, Titre, Responsable, Direction, Axe strat., Domaine ACBF, Priorité, Statut, Avancement, Validation, Actions) with sortable headers, tooltips for truncated text, progress bars
+  - Mobile card layout for responsive design
+  - Grouped View: Collapsible sections per group showing group name, activity count, average progress bar; inside each group a compact table with 8 columns
+  - View Activity Dialog: full read-only detail with sections (Identification, Organisation, Planification, Suivi, Risques & Commentaires), scrolls to 65vh max
+  - Export Buttons: CSV and JSON in header, downloads with current filters applied
+  - Pagination: 50 per page, page number buttons, first/last page
+  - Permission check: pta:read from session.user.roles
+  - Loading skeletons, error state with retry, empty state messages
+  - useCallback/useMemo for performance with 275+ activities
+  - French text throughout, emerald green theme
+- Updated `src/stores/app-store.ts`: Added "pta-consolide" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added imports: BarChart3 icon, PtaConsolideSection component
+  - Added `consolideItems` navigation array for Module 6
+  - Added SectionContent switch case for "pta-consolide"
+  - Added SidebarGroup "Module 6 — Consolidé" after Module 5 group
+  - Updated `getSectionTitle` to include consolideItems in search
+  - Updated header badge: shows "Module 6" for pta-consolide
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1, 2, 3, 4, 5 & 6"
+- Updated `src/middleware.ts`: Already has "/api/pta-consolide": "pta:read" in routePermissions ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 6 frontend section fully implemented for PTA consolidé AAEA
+- READ-ONLY consolidated view — no create/edit/delete operations
+- 6 KPI stats cards with real-time data from /api/pta-consolide/stats
+- Rich filter bar with search, 4 dropdowns, 2 tab groups, and group-by selector
+- Flat data table with sortable columns and responsive mobile cards
+- Grouped view with collapsible sections (by direction, axis, domain, responsible)
+- View dialog with full activity details
+- CSV and JSON export with current filters
+- All components use "use client", shadcn/ui, emerald green theme, French text
+- Middleware permissions updated for pta-consolide API routes
+- Dynamic module badge in header (Module 6 for pta-consolide)
+- Footer updated to reflect all six modules
