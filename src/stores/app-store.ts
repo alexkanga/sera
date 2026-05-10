@@ -12,6 +12,7 @@ export type AppSection =
   | "strategic-axes"
   | "acbf-domains"
   | "acbf-deliverables"
+  | "activities"
   | "profile"
   | "change-password";
 
