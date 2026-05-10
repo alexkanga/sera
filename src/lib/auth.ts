@@ -18,12 +18,12 @@ export const authOptions: NextAuthOptions = {
 
         const identifier = credentials.email.trim();
 
-        // Find user by email OR by ptaCode (username)
+        // Find user by email OR by ptaCode (username, case-insensitive)
         const user = await db.user.findFirst({
           where: {
             OR: [
-              { email: identifier },
-              { ptaCode: identifier },
+              { email: { equals: identifier, mode: "insensitive" } },
+              { ptaCode: { equals: identifier, mode: "insensitive" } },
             ],
           },
           include: {

@@ -415,7 +415,7 @@ async function main() {
         email: "fantomas@aaea.org",
         password: fantomasPassword,
         name: "Fantomas",
-        ptaCode: "FANTOMAS",
+        ptaCode: "fantomas",
         position: "Compte Fantôme",
         department: "Cabinet Direction Exécutive",
       },
