@@ -152,6 +152,7 @@ model Unit {
   id          String    @id @default(cuid())
   code        String    @unique
   name        String
+  description String?   @db.Text
   directionId String
   headUserId  String?
   isActive    Boolean   @default(true)

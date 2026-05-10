@@ -14,6 +14,9 @@ import {
   LogOut,
   Bell,
   ChevronUp,
+  Building2,
+  Network,
+  LayoutGrid,
 } from "lucide-react";
 
 import { useAppStore, type AppSection } from "@/stores/app-store";
@@ -24,6 +27,9 @@ import { PermissionsSection } from "@/components/sections/permissions-section";
 import { AuditLogsSection } from "@/components/sections/audit-logs-section";
 import { ProfileSection } from "@/components/sections/profile-section";
 import { ChangePasswordSection } from "@/components/sections/change-password-section";
+import { DirectionsSection } from "@/components/sections/directions-section";
+import { UnitsSection } from "@/components/sections/units-section";
+import { OrgOverviewSection } from "@/components/sections/org-overview-section";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -67,6 +73,17 @@ const navItems: {
   { section: "audit-logs", label: "Journal d'audit", icon: ScrollText },
 ];
 
+// Navigation items for Module 2
+const orgItems: {
+  section: AppSection;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { section: "org-overview", label: "Vue organisationnelle", icon: LayoutGrid },
+  { section: "directions", label: "Directions", icon: Building2 },
+  { section: "units", label: "Unités", icon: Network },
+];
+
 const accountItems: {
   section: AppSection;
   label: string;
@@ -89,6 +106,12 @@ function SectionContent({ section }: { section: AppSection }) {
       return <PermissionsSection />;
     case "audit-logs":
       return <AuditLogsSection />;
+    case "directions":
+      return <DirectionsSection />;
+    case "units":
+      return <UnitsSection />;
+    case "org-overview":
+      return <OrgOverviewSection />;
     case "profile":
       return <ProfileSection />;
     case "change-password":
@@ -100,7 +123,7 @@ function SectionContent({ section }: { section: AppSection }) {
 
 // Get section title for the header
 function getSectionTitle(section: AppSection): string {
-  const item = [...navItems, ...accountItems].find((i) => i.section === section);
+  const item = [...navItems, ...orgItems, ...accountItems].find((i) => i.section === section);
   return item?.label ?? "Tableau de bord";
 }
 
@@ -192,6 +215,36 @@ export default function HomePage() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map((item) => (
+                  <SidebarMenuItem key={item.section}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.section}
+                      onClick={() => setCurrentSection(item.section)}
+                      tooltip={item.label}
+                      className={
+                        currentSection === item.section
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
+          {/* Module 2 — Organisation */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Module 2 — Organisation
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {orgItems.map((item) => (
                   <SidebarMenuItem key={item.section}>
                     <SidebarMenuButton
                       isActive={currentSection === item.section}
@@ -335,7 +388,7 @@ export default function HomePage() {
               variant="secondary"
               className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 text-[10px] px-1.5 py-0"
             >
-              Module 1
+              {["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
             </Badge>
           </div>
 
@@ -402,7 +455,7 @@ export default function HomePage() {
           <footer className="mt-auto border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 dark:text-slate-500">
               <p>&copy; {new Date().getFullYear()} AAEA — African Water and Sanitation Association</p>
-              <p>AAEA Pilotage 360 — Module 1 : Authentification et gestion des rôles</p>
+              <p>AAEA Pilotage 360 — Modules 1 &amp; 2</p>
             </div>
           </footer>
         </div>

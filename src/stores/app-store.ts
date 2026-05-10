@@ -6,6 +6,9 @@ export type AppSection =
   | "roles"
   | "permissions"
   | "audit-logs"
+  | "directions"
+  | "units"
+  | "org-overview"
   | "profile"
   | "change-password";
 

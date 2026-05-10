@@ -11,6 +11,8 @@ const routePermissions: Record<string, string> = {
   "/api/roles": "roles:read",
   "/api/permissions": "permissions:read",
   "/api/audit-logs": "audit:read",
+  "/api/directions": "org:read",
+  "/api/units": "org:read",
 };
 
 export async function middleware(request: NextRequest) {
