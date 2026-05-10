@@ -412,6 +412,36 @@ Stage Summary:
 - GitHub: pushed to https://github.com/alexkanga/sera.git
 
 ---
+Task ID: 7a-7e
+Agent: Main Agent
+Task: Module 7 — Gestion documentaire et preuves (Complete Development)
+
+Work Log:
+- Added EvidenceFile model to Prisma schema with relations to Activity, AcbfDeliverable, User (uploader/verifier)
+- Added User relations: uploadedEvidence, verifiedEvidence
+- Added AcbfDeliverable relation: evidenceFiles
+- Ran db:push successfully (database in sync)
+- Delegated API development to full-stack-developer subagent (Task 7b)
+- Delegated frontend development to full-stack-developer subagent (Task 7c)
+- Fixed Zod v4 compatibility: errorMap → message in z.enum()
+- Fixed TypeScript: Prisma groupBy orderBy type, empty array type annotation
+- Fixed missing version field in evidenceLinkSchema and linkForm state
+- Fixed link creation payload: added originalName, fileType, version
+- Build passed successfully
+- Lint passed successfully
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Module 7 fully implemented with 4 API routes + 1 frontend section + sidebar integration
+- API: /api/evidence (CRUD), /api/evidence/[id] (detail/update/verify), /api/evidence/upload (file upload), /api/evidence/stats (statistics)
+- Frontend: EvidenceSection with 4 KPI cards, filter bar, data table, create (file upload + link), view/edit dialogs, verify/unverify, archive/restore
+- Prisma: EvidenceFile model with 16+ fields, file/link support, verification workflow
+- Store: "evidence" added to AppSection type
+- Page: Module 7 sidebar group, section rendering, header badge, footer updated
+- Middleware: /api/evidence permission (evidence:read)
+- GitHub: pushed to https://github.com/alexkanga/sera.git
+
+---
 Task ID: 5-frontend
 Agent: Module 5 Frontend Agent (via full-stack-developer subagent)
 Task: Module 5 — Gestion des PTA individuels (Activities Frontend Section + Integration)
