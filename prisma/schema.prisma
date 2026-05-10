@@ -40,6 +40,9 @@ model User {
   activitiesCreatedBy   Activity[]  @relation("ActivityCreatedBy")
   activitiesUpdatedBy   Activity[]  @relation("ActivityUpdatedBy")
 
+  uploadedEvidence   EvidenceFile[] @relation("EvidenceUploader")
+  verifiedEvidence   EvidenceFile[] @relation("EvidenceVerifier")
+
   @@map("users")
 }
 
@@ -229,6 +232,7 @@ model AcbfDeliverable {
 
   domain      AcbfDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
   activities  Activity[]
+  evidenceFiles EvidenceFile[]
 
   @@map("acbf_deliverables")
 }
@@ -285,7 +289,47 @@ model Activity {
   createdBy            User?          @relation("ActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?          @relation("ActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  evidenceFiles        EvidenceFile[]
+
   @@map("activities")
+}
+
+// ============================================================
+// MODULE 7 — Gestion documentaire et preuves
+// ============================================================
+
+model EvidenceFile {
+  id                String    @id @default(cuid())
+  name              String
+  originalName      String
+  fileType          String    // "file", "link"
+  mimeType          String?   // MIME type for files
+  fileSize          Int?      // Size in bytes
+  url               String    // File path or external URL
+  description       String?   @db.Text
+  category          String    // "Rapport", "PV", "Photo", "Lien", "Source de vérification", "Autre"
+  version           String?   // e.g. "v1", "v2"
+  isVerified        Boolean   @default(false)
+  verifiedById      String?
+  verifiedAt        DateTime?
+
+  activityId        String?
+  acbfDeliverableId String?
+
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+
+  uploadedById      String
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  activity          Activity?         @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  acbfDeliverable   AcbfDeliverable?  @relation(fields: [acbfDeliverableId], references: [id], onDelete: Cascade)
+  verifiedBy        User?             @relation("EvidenceVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  uploadedBy        User              @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@map("evidence_files")
 }
 
 // ============================================================

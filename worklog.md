@@ -558,3 +558,73 @@ Stage Summary:
 - Middleware permissions updated for pta-consolide API routes
 - Dynamic module badge in header (Module 6 for pta-consolide)
 - Footer updated to reflect all six modules
+
+---
+Task ID: 7b
+Agent: Module 7 API Agent
+Task: Module 7 — Gestion documentaire et preuves (Evidence API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm EvidenceFile model and all relationships ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Read existing /api/activities/route.ts and /api/activities/[id]/route.ts for code patterns ✅
+- Created `src/app/api/evidence/route.ts` ✅
+  - GET /api/evidence — list with search (name, originalName case-insensitive), category filter (Rapport, PV, Photo, Lien, Source de vérification, Autre), fileType filter (file, link), activityId filter, acbfDeliverableId filter, isVerified filter (true/false), uploadedById filter, status filter (active/archived/all), pagination (default 20)
+  - Include related: uploadedBy (name, email), activity (activityCode, title), acbfDeliverable (code, name), verifiedBy (name)
+  - POST /api/evidence — create with Zod validation for all EvidenceFile fields
+  - Verify activityId and acbfDeliverableId existence if provided
+  - Set uploadedById from current user
+  - Audit log: CREATE action
+  - Permission: evidence:create
+- Created `src/app/api/evidence/[id]/route.ts` ✅
+  - GET /api/evidence/[id] — detail with all relations (uploadedBy, activity, acbfDeliverable, verifiedBy)
+  - PUT /api/evidence/[id] — partial update with Zod validation for name, description, category, version, activityId, acbfDeliverableId
+  - isLocked guard: if associated activity is locked, only admin:* can modify
+  - Verify activityId and acbfDeliverableId existence if changed
+  - oldValue/newValue comparison audit log
+  - Permission: evidence:update
+  - PATCH /api/evidence/[id] — action-based:
+    - "archive": soft delete (deletedAt=now, isActive=false), audit log, permission: evidence:archive
+    - "restore": unarchive (deletedAt=null, isActive=true), audit log, permission: evidence:archive
+    - "verify": set isVerified=true, verifiedById=current user, verifiedAt=now, audit log, permission: evidence:verify
+    - "unverify": set isVerified=false, clear verifiedById/verifiedAt, audit log, permission: evidence:verify
+- Created `src/app/api/evidence/upload/route.ts` ✅
+  - POST /api/evidence/upload — accept multipart/form-data with file field
+  - Save files to /upload/evidence/ directory (create if not exists)
+  - Generate unique filename using Date.now() + original name
+  - Create EvidenceFile record with fileType="file", mimeType, fileSize, url (relative path)
+  - Accept form fields: name, description, category, version, activityId, acbfDeliverableId
+  - Validate category against allowed values
+  - Verify activityId and acbfDeliverableId existence if provided
+  - Audit log: CREATE with filename and size
+  - Permission: evidence:create
+- Created `src/app/api/evidence/stats/route.ts` ✅
+  - GET /api/evidence/stats — Statistics endpoint
+  - Total active evidence files
+  - By category counts (grouped by category)
+  - By fileType (file vs link counts)
+  - Verified vs unverified counts
+  - Recent uploads (last 7 days)
+  - Evidence per activity count (top 10, enriched with activity names)
+  - Parallel DB queries for performance
+  - Permission: evidence:read
+- Updated `src/middleware.ts`: Added "/api/evidence": "evidence:read" to routePermissions ✅
+- Ran db:push: database already in sync with Prisma schema ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 7 API routes fully implemented with complete CRUD operations
+- Evidence list API: rich filtering (8 filters), pagination, search, related data inclusion
+- Evidence create API: full Zod validation, FK existence checks, audit logging
+- Evidence detail API: all relations loaded (uploadedBy, activity, acbfDeliverable, verifiedBy)
+- Evidence update API: partial update with isLocked guard, comprehensive audit logging with oldValue/newValue
+- Evidence actions API: 4 actions (archive/restore/verify/unverify) with appropriate permission checks
+- Evidence upload API: multipart file upload with unique naming, directory creation, file save, DB record creation
+- Evidence stats API: 7 statistics with parallel queries for performance
+- All permission codes: evidence:read, evidence:create, evidence:update, evidence:archive, evidence:verify
+- Middleware permissions updated for evidence API route (evidence:read)
+- Follows exact same patterns as existing activities API routes
+- Uses error.issues (NOT error.errors) for Zod v4 compatibility
+- French error messages throughout

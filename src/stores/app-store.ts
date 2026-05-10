@@ -14,6 +14,7 @@ export type AppSection =
   | "acbf-deliverables"
   | "activities"
   | "pta-consolide"
+  | "evidence"
   | "profile"
   | "change-password";
 
