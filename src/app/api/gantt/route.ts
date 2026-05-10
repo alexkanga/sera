@@ -123,11 +123,14 @@ export async function GET(request: NextRequest) {
       ],
     });
 
+    // Infer the activity type from Prisma's return
+    type GanttActivity = (typeof activities)[number];
+
     // If groupBy is specified, group activities
     if (params.groupBy && params.groupBy !== "none") {
-      const groups = new Map<string, Activity[]>();
+      const groups = new Map<string, GanttActivity[]>();
 
-      activities.forEach((activity: Activity) => {
+      activities.forEach((activity) => {
         let key = "Non assigné";
         switch (params.groupBy) {
           case "direction":
@@ -159,7 +162,7 @@ export async function GET(request: NextRequest) {
         label: key,
         activities: acts,
         avgProgress: acts.length > 0
-          ? Math.round((acts.reduce((sum: number, a: Activity) => sum + a.progressRate, 0) / acts.length) * 10) / 10
+          ? Math.round((acts.reduce((sum, a) => sum + a.progressRate, 0) / acts.length) * 10) / 10
           : 0,
       }));
 
@@ -178,46 +181,4 @@ export async function GET(request: NextRequest) {
     console.error("Erreur GET /api/gantt:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
-}
-
-// Type alias for activity with includes
-interface Activity {
-  id: string;
-  activityCode: string;
-  title: string;
-  responsibleId: string;
-  directionId: string | null;
-  primaryAxisId: string | null;
-  secondaryAxisId: string | null;
-  acbfDomainId: string | null;
-  acbfDeliverableId: string | null;
-  annualObjective: string | null;
-  detailedTasks: string | null;
-  expectedDeliverable: string | null;
-  validatorId: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  priority: string;
-  performanceIndicator: string | null;
-  verificationSource: string | null;
-  status: string;
-  progressRate: number;
-  riskDescription: string | null;
-  comments: string | null;
-  validationStatus: string;
-  nature: string | null;
-  dependency: string | null;
-  duration: string | null;
-  isLocked: boolean;
-  isActive: boolean;
-  deletedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  responsible?: { id: string; name: string; email: string; ptaCode?: string };
-  direction?: { id: string; code: string; name: string };
-  primaryAxis?: { id: string; code: string; name: string };
-  secondaryAxis?: { id: string; code: string; name: string };
-  acbfDomain?: { id: string; code: string; name: string };
-  acbfDeliverable?: { id: string; code: string; name: string };
-  validator?: { id: string; name: string; email: string };
 }

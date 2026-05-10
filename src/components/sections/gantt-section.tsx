@@ -542,7 +542,7 @@ export function GanttSection() {
         let quarterStart: Date | null = null;
         let monthCount = 0;
 
-        months.forEach((month) => {
+        for (const month of months) {
           const q = Math.floor(month.getMonth() / 3);
           if (q !== currentQuarter) {
             if (quarterStart !== null && monthCount > 0) {
@@ -564,7 +564,7 @@ export function GanttSection() {
           } else {
             monthCount++;
           }
-        });
+        }
         // Push last quarter
         if (quarterStart !== null && monthCount > 0) {
           const qNum = Math.floor(quarterStart.getMonth() / 3) + 1;
