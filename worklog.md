@@ -316,3 +316,50 @@ Stage Summary:
 - All permission codes: pta:read, pta:create, pta:update, pta:archive, pta:submit, pta:validate
 - Middleware permissions updated for activities API route (pta:read)
 - Follows exact same patterns as existing directions/strategic-axes/acbf-domains API routes
+
+---
+Task ID: 2-3
+Agent: Seed Rewrite Agent
+Task: Rewrite prisma/seed.ts to read data from Excel file
+
+Work Log:
+- Read worklog.md for project context and existing seed structure ✅
+- Read Prisma schema to understand all models and relationships ✅
+- Inspected Excel file: 37 sheets, 5 key sheets identified ✅
+  - "Equipe AAEA": 28 rows (team members)
+  - "Axes strategiques": 5 rows (strategic axes)
+  - "Referentiel ACBF": 72 rows (14 domains, 72 deliverables)
+  - "RACI institutionnelle": 72 rows
+  - "PTA consolide AAEA": 275 rows (activities)
+- Analyzed Excel data structure: column names, data formats, unique values ✅
+- Rewrote prisma/seed.ts with the following changes:
+  - Added `import * as XLSX from 'xlsx'` and `import path from 'path'`
+  - Added helper functions: removeAccents, generateEmail, mapRole, mapDirectionCode, mapAcbfDomainCode, mapAxeCode, parseProgressRate, parseExcelDate, findUserByValidatorName
+  - Section 0: Read Excel file from `upload/20260506 PTA_Master_AAEA_2026.xlsx`
+  - Section 1: Kept hardcoded permissions (62 permissions, 14 modules)
+  - Section 2: Kept hardcoded roles (6 roles with permission assignments)
+  - Section 3: Directions now derived from Equipe AAEA sheet (3 directions based on unique "Direction / unité" values)
+  - Section 4: Strategic axes now read from "Axes strategiques" sheet (5 axes with code mapping AXE 1→AXE1, etc.)
+  - Section 5: ACBF domains and deliverables now read from "Referentiel ACBF" sheet (14 domains, 72 deliverables with code mapping ACBF-01→ACBF1, etc.)
+  - Section 6: Team members now read from "Equipe AAEA" sheet (28 members with email generation and role mapping)
+  - Section 7: Kept super admin account (admin@aaea.org / Admin2026!)
+  - Section 8: Kept Fantomas ghost account (fantomas / admin)
+  - Section 9: NEW — 275 activities from "PTA consolide AAEA" sheet with full field mapping:
+    - Activity code, title, nature, dates, priority, status, progress rate
+    - FK lookups: responsibleId (via ptaCode), directionId (via ptaCode→direction mapping), primaryAxisId, secondaryAxisId, acbfDomainId, acbfDeliverableId, validatorId
+    - Bloc/objectif fonctionnel prepended to annualObjective
+    - Contributeurs, Lien ACBF, and Commentaires combined into comments field
+    - All activities start with validationStatus = "Brouillon"
+- Used idempotent create pattern (findUnique + create) throughout
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Seed file fully rewritten to read from Excel instead of hardcoded data
+- 28 team members from "Equipe AAEA" sheet with auto-generated emails and role mapping
+- 5 strategic axes from "Axes strategiques" sheet
+- 14 ACBF domains + 72 deliverables from "Referentiel ACBF" sheet
+- 275 activities from "PTA consolide AAEA" sheet (the major new addition)
+- Hardcoded permissions, roles, super admin, and Fantomas account preserved
+- Excel file path: upload/20260506 PTA_Master_AAEA_2026.xlsx
+- All data mappings follow the specified field mapping rules

@@ -1,13 +1,182 @@
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import * as XLSX from "xlsx";
+import path from "path";
 
 const prisma = new PrismaClient();
 
+// ============================================================
+// Helper: remove accents from a string
+// ============================================================
+function removeAccents(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+// ============================================================
+// Helper: generate email from name
+// e.g. "François Olivier Gosso" → "f.gosso@aaea.org"
+// ============================================================
+function generateEmail(fullName: string): string {
+  const cleaned = removeAccents(fullName).trim();
+  const parts = cleaned.split(/\s+/);
+  if (parts.length < 2) return `${cleaned.toLowerCase()}@aaea.org`;
+  const firstName = parts[0];
+  const lastName = parts[parts.length - 1];
+  return `${firstName[0].toLowerCase()}.${lastName.toLowerCase()}@aaea.org`;
+}
+
+// ============================================================
+// Helper: map position to role code
+// ============================================================
+function mapRole(position: string): string {
+  const pos = position.toLowerCase();
+  if (
+    pos.includes("directeur exécutif") ||
+    pos.includes("directeur services") ||
+    pos.includes("directeur administration")
+  ) {
+    return "DIRECTEUR";
+  }
+  if (pos.includes("données") || pos.includes("meal") || pos.includes("suivi-évaluation") || pos.includes("suivi-éval")) {
+    return "MEAL";
+  }
+  if (pos.includes("chauffeur")) {
+    return "LECTEUR";
+  }
+  return "RESPONSABLE";
+}
+
+// ============================================================
+// Helper: map department to direction code
+// ============================================================
+function mapDirectionCode(department: string): string {
+  const dept = department.toLowerCase();
+  if (dept.includes("exécutiv") || dept.includes("executiv")) return "DEX";
+  if (dept.includes("membres") || dept.includes("programmes") || dept.includes("program")) return "DSMP";
+  if (dept.includes("administrative") || dept.includes("financière") || dept.includes("financiere")) return "DAF";
+  return "DEX"; // default
+}
+
+// ============================================================
+// Helper: map ACBF domain ID to Prisma code
+// e.g. "ACBF-01" → "ACBF1"
+// ============================================================
+function mapAcbfDomainCode(excelId: string): string {
+  return excelId.replace("ACBF-", "ACBF").replace(/^ACBF0(\d)$/, "ACBF$1");
+}
+
+// ============================================================
+// Helper: map axe code
+// e.g. "AXE 1" → "AXE1"
+// ============================================================
+function mapAxeCode(excelCode: string): string {
+  return excelCode.replace("AXE ", "AXE");
+}
+
+// ============================================================
+// Helper: parse progress rate
+// ============================================================
+function parseProgressRate(val: unknown): number {
+  if (val === undefined || val === null || val === "") return 0;
+  const str = String(val).replace("%", "").trim();
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+}
+
+// ============================================================
+// Helper: parse date from Excel (could be string or number)
+// ============================================================
+function parseExcelDate(val: unknown): Date | null {
+  if (val === undefined || val === null || val === "") return null;
+  if (typeof val === "number") {
+    // Excel serial date number
+    const date = XLSX.SSF.parse_date_code(val);
+    if (date) {
+      return new Date(date.y, date.m - 1, date.d);
+    }
+    return null;
+  }
+  const str = String(val).trim();
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d;
+  return null;
+}
+
+// ============================================================
+// Helper: find user by position for validator matching
+// ============================================================
+function findUserByValidatorName(
+  validatorName: string,
+  usersByPosition: Map<string, string>,
+  usersByPtaCode: Map<string, string>
+): string | null {
+  const name = validatorName.trim().toLowerCase();
+  if (!name || name === "à préciser") return null;
+
+  // Try exact position match
+  const positionMap: Record<string, string> = {
+    "directeur exécutif": "Directeur Exécutif",
+    "directeur dsmp": "Directeur Services aux Membres et des Programmes",
+    "daf": "Directeur Administration et Finance",
+    "directeur dsmp/ finance": "Directeur Services aux Membres et des Programmes",
+    "directeur dsmp / finance": "Directeur Services aux Membres et des Programmes",
+    "responsable rh": "Responsable des ressources humaines",
+    "responsable comptable et finance": "Responsable comptable et finance",
+    "comptable senior trésorerie": "Comptable Senior en charge de la Trésorerie",
+    "responsable logistique et achats": "Responsable Logistique et Achats",
+    "chargé logistique et achats": "Chargé Logistique et Achats",
+    "responsable logistique": "Responsable Logistique et Achats",
+    "coordonnateur assainissement": "Coordonnateur Senior Assainissement",
+  };
+
+  const targetPosition = positionMap[name];
+  if (targetPosition) {
+    const userId = usersByPosition.get(targetPosition.toLowerCase());
+    if (userId) return userId;
+  }
+
+  // Fallback: try pta code match
+  const codeMap: Record<string, string> = {
+    "dex": "DEX",
+    "dsmp": "DSMP",
+    "daf": "DAF",
+  };
+  const code = codeMap[name];
+  if (code) {
+    const userId = usersByPtaCode.get(code);
+    if (userId) return userId;
+  }
+
+  // Fallback: try partial position match
+  const positionEntries = Array.from(usersByPosition.entries());
+  for (const [pos, id] of positionEntries) {
+    if (pos.includes(name) || name.includes(pos.split(" ")[0])) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
 async function main() {
-  console.log("🌱 Début du seed AAEA Pilotage 360...\n");
+  console.log("🌱 Début du seed AAEA Pilotage 360 (depuis Excel)...\n");
 
   // ============================================================
-  // 1. Créer les permissions
+  // 0. Lire le fichier Excel
+  // ============================================================
+  console.log("📖 Lecture du fichier Excel...");
+  const excelPath = path.join(process.cwd(), "upload", "20260506 PTA_Master_AAEA_2026.xlsx");
+  const workbook = XLSX.readFile(excelPath);
+
+  const equipeSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Equipe AAEA"], { defval: "" });
+  const axesSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Axes strategiques"], { defval: "" });
+  const acbfSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Referentiel ACBF"], { defval: "" });
+  const ptaSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["PTA consolide AAEA"], { defval: "" });
+
+  console.log(`  ✅ Excel lu: ${equipeSheet.length} membres, ${axesSheet.length} axes, ${acbfSheet.length} livrables ACBF, ${ptaSheet.length} activités\n`);
+
+  // ============================================================
+  // 1. Créer les permissions (hardcoded — pas dans l'Excel)
   // ============================================================
   console.log("📋 Création des permissions...");
 
@@ -114,7 +283,7 @@ async function main() {
   console.log(`  ✅ ${permissionsData.length} permissions créées\n`);
 
   // ============================================================
-  // 2. Créer les rôles
+  // 2. Créer les rôles (hardcoded — pas dans l'Excel)
   // ============================================================
   console.log("👥 Création des rôles...");
 
@@ -228,131 +397,184 @@ async function main() {
   console.log(`  ✅ ${rolesData.length} rôles créés\n`);
 
   // ============================================================
-  // 3. Créer les directions
+  // 3. Créer les directions (dérivées de l'Excel)
   // ============================================================
   console.log("🏛️ Création des directions...");
 
-  const directionsData = [
-    { code: "DEX", name: "Cabinet Direction Exécutive", description: "Direction exécutive de l'AAEA" },
-    { code: "DSMP", name: "Direction des Services aux Membres et des Programmes", description: "Services aux membres et programmes" },
-    { code: "DAF", name: "Direction Administrative et Financière", description: "Administration et finances" },
-  ];
+  // Derive directions from the Equipe AAEA sheet — 3 unique directions
+  const directionMap: Record<string, { code: string; name: string; description: string }> = {};
+  for (const row of equipeSheet) {
+    const dept = String(row["Direction / unité"] || "").trim();
+    if (!dept) continue;
+    const dirCode = mapDirectionCode(dept);
+    if (!directionMap[dirCode]) {
+      directionMap[dirCode] = {
+        code: dirCode,
+        name: dept,
+        description: dept,
+      };
+    }
+  }
+  // Ensure all 3 directions exist even if not in the sheet
+  if (!directionMap["DEX"]) directionMap["DEX"] = { code: "DEX", name: "Cabinet Direction Exécutive", description: "Direction exécutive de l'AAEA" };
+  if (!directionMap["DSMP"]) directionMap["DSMP"] = { code: "DSMP", name: "Direction des Services aux Membres et des Programmes", description: "Services aux membres et programmes" };
+  if (!directionMap["DAF"]) directionMap["DAF"] = { code: "DAF", name: "Direction Administrative et Financière", description: "Administration et finances" };
 
   const directions: Record<string, string> = {};
-  for (const d of directionsData) {
+  for (const d of Object.values(directionMap)) {
     let dir = await prisma.direction.findUnique({ where: { code: d.code } });
     if (!dir) {
-      dir = await prisma.direction.create({ data: d });
+      dir = await prisma.direction.create({ data: { code: d.code, name: d.name, description: d.description } });
     }
     directions[d.code] = dir.id;
   }
-  console.log(`  ✅ ${directionsData.length} directions créées\n`);
+  const directionCount = Object.keys(directionMap).length;
+  console.log(`  ✅ ${directionCount} directions créées\n`);
 
   // ============================================================
-  // 4. Créer les axes stratégiques
+  // 4. Créer les axes stratégiques (depuis l'Excel)
   // ============================================================
   console.log("🎯 Création des axes stratégiques...");
 
-  const axesData = [
-    { code: "AXE1", name: "Renforcement des capacités", objective: "Renforcer durablement les compétences techniques, managériales, institutionnelles et de plaidoyer des acteurs WASH.", expectedResults: "Professionnalisation accrue, formations certifiantes, mentorat, apprentissage entre pairs et bonnes pratiques diffusées.", indicators: "Nombre de professionnels formés/certifiés; taux de satisfaction; nombre de formations; nombre de bonnes pratiques diffusées.", concernedUnits: "DSMP; Coordinateurs; Connaissances; RH; MEAL", order: 1 },
-    { code: "AXE2", name: "Développement des services", objective: "Structurer et déployer une offre intégrée de services à forte valeur ajoutée pour les membres, institutions et partenaires.", expectedResults: "Utilisation accrue des services, satisfaction renforcée, amélioration des performances des institutions appuyées.", indicators: "Taux d'utilisation des services; nombre d'institutions accompagnées; satisfaction; nombre de services déployés.", concernedUnits: "DSMP; Services aux membres; Événements; Sponsoring; MEAL; Numérique; Communication", order: 2 },
-    { code: "AXE3", name: "Données et innovation", objective: "Faire de la donnée, de l'innovation et du numérique des leviers de performance, redevabilité et plaidoyer sectoriel.", expectedResults: "Données WASH fiables, plateformes numériques sécurisées, tableaux de bord, rapports sectoriels et décisions fondées sur les données.", indicators: "Nombre d'outils numériques opérationnels; fréquence des tableaux de bord; nombre de rapports produits; niveau d'utilisation des données.", concernedUnits: "MEAL; Numérique; DEx; DSMP; Communication; Coordinateurs", order: 3 },
-    { code: "AXE4", name: "Développement de partenariat", objective: "Consolider, structurer et élargir les partenariats institutionnels, techniques et financiers de l'AAEA.", expectedResults: "Portefeuille de partenariats diversifié, ressources mobilisées, projets conjoints et collaborations structurées.", indicators: "Nombre de partenariats actifs; ressources mobilisées; projets conjoints; MoU signés; niveau d'alignement stratégique.", concernedUnits: "DEx; DSMP; Sponsoring; Coordinateurs; DAF; Communication", order: 4 },
-    { code: "AXE5", name: "Gouvernance et durabilité institutionnelle", objective: "Renforcer la gouvernance, la conformité, la performance organisationnelle et la durabilité financière de l'AAEA.", expectedResults: "Gouvernance modernisée, autonomie financière renforcée, pilotage stratégique amélioré, risques maîtrisés.", indicators: "Taux d'exécution du plan stratégique; audits réalisés; rapports qualité; conformité; ressources propres; risques suivis.", concernedUnits: "DEx; DAF; Conformité & Performance; RH; Logistique; Finance; MEAL", order: 5 },
-  ];
+  const axesLookup: Record<string, string> = {}; // AXE1 → id
+  for (const row of axesSheet) {
+    const excelCode = String(row["Code axe"] || "").trim();
+    const name = String(row["Intitulé de l'axe"] || "").trim();
+    const objective = String(row["Description synthétique"] || "").trim();
+    const expectedResults = String(row["Résultats attendus"] || "").trim();
+    const indicators = String(row["Indicateurs stratégiques possibles"] || "").trim();
+    const concernedUnits = String(row["Directions principalement concernées"] || "").trim();
 
-  for (const axe of axesData) {
-    const existing = await prisma.strategicAxis.findUnique({ where: { code: axe.code } });
+    const code = mapAxeCode(excelCode); // "AXE 1" → "AXE1"
+    const order = parseInt(excelCode.replace("AXE ", ""), 10);
+
+    const existing = await prisma.strategicAxis.findUnique({ where: { code } });
     if (!existing) {
-      await prisma.strategicAxis.create({ data: axe });
+      const created = await prisma.strategicAxis.create({
+        data: { code, name, objective, expectedResults, indicators, concernedUnits, order },
+      });
+      axesLookup[code] = created.id;
+    } else {
+      axesLookup[code] = existing.id;
     }
   }
-  console.log(`  ✅ ${axesData.length} axes stratégiques créés\n`);
+  console.log(`  ✅ ${axesSheet.length} axes stratégiques créés\n`);
 
   // ============================================================
-  // 5. Créer les domaines ACBF
+  // 5. Créer les domaines ACBF et livrables (depuis l'Excel)
   // ============================================================
-  console.log("📊 Création des domaines ACBF...");
+  console.log("📊 Création des domaines ACBF et livrables...");
 
-  const acbfDomainsData = [
-    { code: "ACBF1", name: "Governance & Organizational Structure", order: 1 },
-    { code: "ACBF2", name: "Strategic & Operational Planning", order: 2 },
-    { code: "ACBF3", name: "Program & Project Management", order: 3 },
-    { code: "ACBF4", name: "Monitoring, Evaluation, Accountability & Learning — MEAL", order: 4 },
-    { code: "ACBF5", name: "Human Resources & Leadership", order: 5 },
-    { code: "ACBF6", name: "Financial Management & Compliance", order: 6 },
-    { code: "ACBF7", name: "Administrative & Operational Systems", order: 7 },
-    { code: "ACBF8", name: "ICT, Digital Systems & Infrastructure", order: 8 },
-    { code: "ACBF9", name: "Communications, Advocacy & Visibility", order: 9 },
-    { code: "ACBF10", name: "Membership & Stakeholder Management", order: 10 },
-    { code: "ACBF11", name: "Sustainability, Resource Mobilization & Partnerships", order: 11 },
-    { code: "ACBF12", name: "Legal & Compliance", order: 12 },
-    { code: "ACBF13", name: "Research and Knowledge Management", order: 13 },
-    { code: "ACBF14", name: "Optional / Supporting Documents", order: 14 },
-  ];
+  // First, create unique domains
+  const domainLookup: Record<string, string> = {}; // ACBF1 → id
+  const domainByName: Record<string, string> = {}; // domain name → id
+  const seenDomains = new Map<string, { code: string; name: string; order: number }>();
+  for (const row of acbfSheet) {
+    const excelDomainId = String(row["ID domaine ACBF"] || "").trim();
+    const domainName = String(row["Domaine ACBF"] || "").trim();
+    if (!excelDomainId || seenDomains.has(excelDomainId)) continue;
 
-  for (const domain of acbfDomainsData) {
-    const existing = await prisma.acbfDomain.findUnique({ where: { code: domain.code } });
+    const code = mapAcbfDomainCode(excelDomainId); // "ACBF-01" → "ACBF1"
+    const order = parseInt(excelDomainId.replace("ACBF-", ""), 10);
+    seenDomains.set(excelDomainId, { code, name: domainName, order });
+  }
+
+  for (const { code, name, order } of Array.from(seenDomains.values())) {
+    const existing = await prisma.acbfDomain.findUnique({ where: { code } });
     if (!existing) {
-      await prisma.acbfDomain.create({ data: domain });
+      const created = await prisma.acbfDomain.create({ data: { code, name, order } });
+      domainLookup[code] = created.id;
+      domainByName[name] = created.id;
+    } else {
+      domainLookup[code] = existing.id;
+      domainByName[name] = existing.id;
     }
   }
-  console.log(`  ✅ ${acbfDomainsData.length} domaines ACBF créés\n`);
+  console.log(`  ✅ ${seenDomains.size} domaines ACBF créés`);
+
+  // Now create deliverables
+  const deliverableLookup: Record<string, string> = {}; // ACBF-01-01 → id
+  const deliverableByName: Record<string, string> = {}; // deliverable name → id
+  let deliverableCount = 0;
+  for (const row of acbfSheet) {
+    const deliverableCode = String(row["ID livrable ACBF"] || "").trim();
+    const deliverableName = String(row["Livrable demandé"] || "").trim();
+    const excelDomainId = String(row["ID domaine ACBF"] || "").trim();
+    const description = String(row["Description courte"] || "").trim();
+    const priority = String(row["Priorité"] || "").trim();
+    const status = String(row["Statut de disponibilité"] || "").trim();
+
+    const domainCode = mapAcbfDomainCode(excelDomainId);
+    const domainId = domainLookup[domainCode];
+    if (!domainId || !deliverableCode) continue;
+
+    const existing = await prisma.acbfDeliverable.findUnique({ where: { code: deliverableCode } });
+    if (!existing) {
+      const created = await prisma.acbfDeliverable.create({
+        data: {
+          code: deliverableCode,
+          name: deliverableName,
+          domainId,
+          description: description || null,
+          priority: priority || null,
+          status: status || null,
+        },
+      });
+      deliverableLookup[deliverableCode] = created.id;
+      deliverableByName[deliverableName] = created.id;
+      deliverableCount++;
+    } else {
+      deliverableLookup[deliverableCode] = existing.id;
+      deliverableByName[deliverableName] = existing.id;
+    }
+  }
+  console.log(`  ✅ ${deliverableCount} livrables ACBF créés\n`);
 
   // ============================================================
-  // 6. Créer les utilisateurs
+  // 6. Créer les utilisateurs (depuis l'Excel)
   // ============================================================
   console.log("👤 Création des utilisateurs AAEA...");
 
   const defaultPassword = await hash("AAEA2026!", 12);
 
-  const teamMembers = [
-    { ptaCode: "DEX", name: "François Olivier Gosso", position: "Directeur Exécutif", department: "Cabinet Direction Exécutive", role: "DIRECTEUR", email: "f.gosso@aaea.org" },
-    { ptaCode: "DSMP", name: "Moussa Seck", position: "Directeur Services aux Membres et des Programmes", department: "Direction des Services aux Membres et des Programmes", role: "DIRECTEUR", email: "m.seck@aaea.org" },
-    { ptaCode: "DAF", name: "Olivier Gnanpa", position: "Directeur Administration et Finance", department: "Direction Administrative et Financière", role: "DIRECTEUR", email: "o.gnanpa@aaea.org" },
-    { ptaCode: "CONF", name: "Christian ZOCLI", position: "Responsable Conformité & Performance", department: "Cabinet Direction Exécutive", role: "RESPONSABLE", email: "c.zocli@aaea.org" },
-    { ptaCode: "MEAL", name: "Alexandre KANGA", position: "Responsable Données et Suivi-évaluation", department: "Cabinet Direction Exécutive", role: "MEAL", email: "a.kanga@aaea.org" },
-    { ptaCode: "NUM", name: "Nicaise KOUAKOU", position: "Responsable Développement Numérique et Innovation", department: "Cabinet Direction Exécutive", role: "RESPONSABLE", email: "n.kouakou@aaea.org" },
-    { ptaCode: "COM", name: "Stephanie Nzickonan", position: "Responsable Communication", department: "Cabinet Direction Exécutive", role: "RESPONSABLE", email: "s.nzickonan@aaea.org" },
-    { ptaCode: "ADX", name: "Mariam Ba Coulibaly", position: "Assistante du Directeur Exécutif", department: "Cabinet Direction Exécutive", role: "RESPONSABLE", email: "m.coulibaly@aaea.org" },
-    { ptaCode: "ASS", name: "Valentin Yao", position: "Coordonnateur Senior Assainissement", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "v.yao@aaea.org" },
-    { ptaCode: "EAU", name: "Dr Hemez Kouassi", position: "Coordonnateur Eau", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "h.kouassi@aaea.org" },
-    { ptaCode: "GEN", name: "Dr Leticia Ackun", position: "Coordonnatrice Senior Genre et Réseaux", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "l.ackun@aaea.org" },
-    { ptaCode: "KNOW", name: "Djalia Umutangampundu", position: "Responsable projets, gestion et partage de connaissances", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "d.umutangampundu@aaea.org" },
-    { ptaCode: "MEMB", name: "Micheline Lawson", position: "Responsable événements et services aux membres", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "m.lawson@aaea.org" },
-    { ptaCode: "SPON", name: "Kalou Aimé Digbeu", position: "Responsable Expositions et sponsoring", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "k.digbeu@aaea.org" },
-    { ptaCode: "PROJASS", name: "Julian Musime", position: "Chargé de projets assainissement", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "j.musime@aaea.org" },
-    { ptaCode: "ASM", name: "Khady Dankoulou", position: "Assistante DSMP Services aux Membres", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "k.dankoulou@aaea.org" },
-    { ptaCode: "ASPP", name: "Benedicte Kanga", position: "Assistante DSMP Programmes, Projets et Partenariats", department: "Direction des Services aux Membres et des Programmes", role: "RESPONSABLE", email: "b.kanga@aaea.org" },
-    { ptaCode: "RH", name: "Emmanuel Kouadio", position: "Responsable des ressources humaines", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "e.kouadio@aaea.org" },
-    { ptaCode: "ARH", name: "Corine Assienin", position: "Assistante Ressources Humaines", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "c.assienin@aaea.org" },
-    { ptaCode: "FIN", name: "Sonia Nguessan", position: "Responsable comptable et finance", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "s.nguessan@aaea.org" },
-    { ptaCode: "TRES", name: "Vanessa Tihi", position: "Comptable Senior en charge de la Trésorerie", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "v.tihi@aaea.org" },
-    { ptaCode: "ACF", name: "Franc Mabio", position: "Assistant comptable", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "f.mabio@aaea.org" },
-    { ptaCode: "ATRES", name: "Edwidge Gueu", position: "Assistante comptable volet trésorerie", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "e.gueu@aaea.org" },
-    { ptaCode: "AGR", name: "Théodora Kouakou", position: "Assistante comptable services aux membres et AGR", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "t.kouakou@aaea.org" },
-    { ptaCode: "LOG", name: "Amos Yao", position: "Responsable Logistique et Achats", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "a.yao@aaea.org" },
-    { ptaCode: "CLOG", name: "Abdoulaye Fadiga", position: "Chargé Logistique et Achats", department: "Direction Administrative et Financière", role: "RESPONSABLE", email: "a.fadiga@aaea.org" },
-    { ptaCode: "CHAUF1", name: "Mathieu Kouakou", position: "Chauffeur", department: "Direction Administrative et Financière", role: "LECTEUR", email: "m.kouakou@aaea.org" },
-    { ptaCode: "CHAUF2", name: "Dominique Diézahi", position: "Chauffeur", department: "Direction Administrative et Financière", role: "LECTEUR", email: "d.diezahi@aaea.org" },
-  ];
+  const usersByPtaCode = new Map<string, string>(); // ptaCode → userId
+  const usersByPosition = new Map<string, string>(); // position.toLowerCase() → userId
+  const usersByName = new Map<string, string>(); // name → userId
 
-  for (const member of teamMembers) {
-    let user = await prisma.user.findUnique({ where: { email: member.email } });
+  for (const row of equipeSheet) {
+    const ptaCode = String(row["Code PTA"] || "").trim();
+    const name = String(row["Nom et prénoms"] || "").trim();
+    const position = String(row["Poste"] || "").trim();
+    const department = String(row["Direction / unité"] || "").trim();
+
+    if (!ptaCode || !name) continue;
+
+    const email = generateEmail(name);
+    const roleCode = mapRole(position);
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      // Also check by ptaCode
+      user = await prisma.user.findUnique({ where: { ptaCode } });
+    }
     if (!user) {
       user = await prisma.user.create({
         data: {
-          email: member.email,
+          email,
           password: defaultPassword,
-          name: member.name,
-          ptaCode: member.ptaCode,
-          position: member.position,
-          department: member.department,
+          name,
+          ptaCode,
+          position,
+          department,
         },
       });
     }
 
-    const roleId = roles[member.role];
+    usersByPtaCode.set(ptaCode, user.id);
+    usersByPosition.set(position.toLowerCase(), user.id);
+    usersByName.set(name, user.id);
+
+    const roleId = roles[roleCode];
     if (roleId) {
       const existing = await prisma.userRole.findUnique({
         where: { userId_roleId: { userId: user.id, roleId } },
@@ -362,14 +584,15 @@ async function main() {
       }
     }
 
-    if (["DEX", "DSMP", "DAF"].includes(member.ptaCode)) {
+    // Set as head of direction if applicable
+    if (["DEX", "DSMP", "DAF"].includes(ptaCode)) {
       await prisma.direction.update({
-        where: { code: member.ptaCode },
+        where: { code: ptaCode },
         data: { headUserId: user.id },
       });
     }
   }
-  console.log(`  ✅ ${teamMembers.length} utilisateurs créés\n`);
+  console.log(`  ✅ ${equipeSheet.length} utilisateurs créés\n`);
 
   // ============================================================
   // 7. Créer le super admin
@@ -433,9 +656,217 @@ async function main() {
   }
   console.log("  ✅ Compte fantôme créé (fantomas / admin)\n");
 
+  // ============================================================
+  // 9. Créer les activités PTA (depuis l'Excel — 275 activités)
+  // ============================================================
+  console.log("📝 Création des activités PTA...");
+
+  let activityCreated = 0;
+  let activitySkipped = 0;
+  let activityErrors = 0;
+
+  // Create activities in batches for performance
+  const activityBatch: Array<{
+    activityCode: string;
+    responsibleId: string;
+    directionId: string | null;
+    primaryAxisId: string | null;
+    secondaryAxisId: string | null;
+    acbfDomainId: string | null;
+    acbfDeliverableId: string | null;
+    annualObjective: string | null;
+    title: string;
+    detailedTasks: string | null;
+    expectedDeliverable: string | null;
+    validatorId: string | null;
+    startDate: Date | null;
+    endDate: Date | null;
+    priority: string;
+    performanceIndicator: string | null;
+    verificationSource: string | null;
+    status: string;
+    progressRate: number;
+    riskDescription: string | null;
+    comments: string | null;
+    validationStatus: string;
+    nature: string | null;
+    dependency: string | null;
+    duration: string | null;
+  }> = [];
+
+  for (const row of ptaSheet) {
+    const activityCode = String(row["N°"] || "").trim();
+    const ptaCode = String(row["Code PTA"] || "").trim();
+    const title = String(row["Activité PTA concrète"] || "").trim();
+    const bloc = String(row["Bloc / objectif fonctionnel"] || "").trim();
+    const nature = String(row["Nature de l'activité"] || "").trim();
+    const primaryAxisExcel = String(row["Axe stratégique principal"] || "").trim();
+    const secondaryAxesExcel = String(row["Axe(s) secondaire(s)"] || "").trim();
+    const domainAcbfName = String(row["Domaine ACBF"] || "").trim();
+    const lienAcbf = String(row["Lien ACBF"] || "").trim();
+    const livrableAcbfName = String(row["Livrable ACBF associé"] || "").trim();
+    const annualObjective = String(row["Objectif annuel"] || "").trim();
+    const detailedTasks = String(row["Tâches détaillées"] || "").trim();
+    const expectedDeliverable = String(row["Livrable attendu"] || "").trim();
+    const contributeurs = String(row["Contributeur(s)"] || "").trim();
+    const validateurName = String(row["Validateur"] || "").trim();
+    const dateDebut = row["Date début"];
+    const dateFin = row["Date fin"];
+    const duree = String(row["Durée estimée"] || "").trim();
+    const dependance = String(row["Dépendance / préalable"] || "").trim();
+    const priorite = String(row["Priorité"] || "").trim();
+    const indicateur = String(row["Indicateur de performance"] || "").trim();
+    const sourceVerif = String(row["Source de vérification"] || "").trim();
+    const statut = String(row["Statut"] || "").trim();
+    const tauxAvancement = row["Taux d'avancement"];
+    const risque = String(row["Risque / contrainte"] || "").trim();
+    const commentaires = String(row["Commentaires"] || "").trim();
+
+    if (!activityCode || !ptaCode || !title) {
+      activitySkipped++;
+      continue;
+    }
+
+    // Look up responsibleId by ptaCode
+    const responsibleId = usersByPtaCode.get(ptaCode);
+    if (!responsibleId) {
+      activitySkipped++;
+      continue;
+    }
+
+    // Look up directionId based on ptaCode
+    let directionId: string | null = null;
+    if (["DEX"].includes(ptaCode) || ["CONF", "MEAL", "NUM", "COM", "ADX"].includes(ptaCode)) {
+      directionId = directions["DEX"] || null;
+    } else if (["DSMP"].includes(ptaCode) || ["ASS", "EAU", "GEN", "KNOW", "MEMB", "SPON", "PROJASS", "ASM", "ASPP"].includes(ptaCode)) {
+      directionId = directions["DSMP"] || null;
+    } else if (["DAF"].includes(ptaCode) || ["RH", "ARH", "FIN", "TRES", "ACF", "ATRES", "AGR", "LOG", "CLOG", "CHAUF1", "CHAUF2"].includes(ptaCode)) {
+      directionId = directions["DAF"] || null;
+    }
+
+    // Look up primaryAxisId
+    let primaryAxisId: string | null = null;
+    if (primaryAxisExcel) {
+      const axisCode = mapAxeCode(primaryAxisExcel);
+      primaryAxisId = axesLookup[axisCode] || null;
+    }
+
+    // Look up secondaryAxisId (use first one if multiple)
+    let secondaryAxisId: string | null = null;
+    if (secondaryAxesExcel) {
+      const firstAxis = secondaryAxesExcel.split(";")[0].trim();
+      if (firstAxis) {
+        const axisCode = mapAxeCode(firstAxis);
+        secondaryAxisId = axesLookup[axisCode] || null;
+      }
+    }
+
+    // Look up acbfDomainId by name match
+    let acbfDomainId: string | null = null;
+    if (domainAcbfName) {
+      acbfDomainId = domainByName[domainAcbfName] || null;
+      if (!acbfDomainId) {
+        for (const [name, id] of Object.entries(domainByName)) {
+          if (name.toLowerCase().includes(domainAcbfName.toLowerCase()) || domainAcbfName.toLowerCase().includes(name.toLowerCase())) {
+            acbfDomainId = id;
+            break;
+          }
+        }
+      }
+    }
+
+    // Look up acbfDeliverableId by name match
+    let acbfDeliverableId: string | null = null;
+    if (livrableAcbfName) {
+      acbfDeliverableId = deliverableByName[livrableAcbfName] || null;
+      if (!acbfDeliverableId) {
+        for (const [name, id] of Object.entries(deliverableByName)) {
+          if (name.toLowerCase().includes(livrableAcbfName.toLowerCase()) || livrableAcbfName.toLowerCase().includes(name.toLowerCase())) {
+            acbfDeliverableId = id;
+            break;
+          }
+        }
+      }
+    }
+
+    // Look up validatorId
+    let validatorId: string | null = null;
+    if (validateurName) {
+      validatorId = findUserByValidatorName(validateurName, usersByPosition, usersByPtaCode);
+    }
+
+    // Build annualObjective with bloc appended
+    let finalAnnualObjective = annualObjective;
+    if (bloc) {
+      finalAnnualObjective = `[${bloc}] ${annualObjective}`;
+    }
+
+    // Build comments
+    const commentParts: string[] = [];
+    if (contributeurs) commentParts.push(`Contributeur(s): ${contributeurs}`);
+    if (lienAcbf) commentParts.push(`Lien ACBF: ${lienAcbf}`);
+    if (commentaires) commentParts.push(commentaires);
+    const finalComments = commentParts.join(" | ");
+
+    activityBatch.push({
+      activityCode,
+      responsibleId,
+      directionId,
+      primaryAxisId,
+      secondaryAxisId,
+      acbfDomainId,
+      acbfDeliverableId,
+      annualObjective: finalAnnualObjective || null,
+      title,
+      detailedTasks: detailedTasks || null,
+      expectedDeliverable: expectedDeliverable || null,
+      validatorId,
+      startDate: parseExcelDate(dateDebut),
+      endDate: parseExcelDate(dateFin),
+      priority: priorite || "Moyenne",
+      performanceIndicator: indicateur || null,
+      verificationSource: sourceVerif || null,
+      status: statut || "Non démarré",
+      progressRate: parseProgressRate(tauxAvancement),
+      riskDescription: risque || null,
+      comments: finalComments || null,
+      validationStatus: "Brouillon",
+      nature: nature || null,
+      dependency: dependance || null,
+      duration: duree || null,
+    });
+  }
+
+  // Insert in batches of 50 using createMany with skipDuplicates
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < activityBatch.length; i += BATCH_SIZE) {
+    const batch = activityBatch.slice(i, i + BATCH_SIZE);
+    try {
+      const result = await prisma.activity.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+      activityCreated += result.count;
+    } catch (err) {
+      console.log(`  ❌ Erreur batch activités ${i}-${i + batch.length}: ${err}`);
+      activityErrors += batch.length;
+    }
+  }
+  console.log(`  ✅ ${activityCreated} activités créées, ${activitySkipped} ignorées, ${activityErrors} erreurs\n`);
+
+  // ============================================================
+  // Résumé final
+  // ============================================================
   console.log("═══════════════════════════════════════════════════");
   console.log("🌱 SEED TERMINÉ AVEC SUCCÈS !");
   console.log("═══════════════════════════════════════════════════");
+  console.log("  📊 Données chargées depuis Excel:");
+  console.log(`     ${directionCount} directions`);
+  console.log(`     ${axesSheet.length} axes stratégiques`);
+  console.log(`     ${seenDomains.size} domaines ACBF`);
+  console.log(`     ${deliverableCount} livrables ACBF`);
+  console.log(`     ${equipeSheet.length} membres de l'équipe`);
+  console.log(`     ${activityCreated} activités PTA`);
   console.log("  🔐 Comptes de connexion :");
   console.log("     Admin    : admin@aaea.org / Admin2026!");
   console.log("     Fantomas : fantomas / admin  (email: fantomas@aaea.org)");
