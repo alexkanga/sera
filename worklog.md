@@ -986,3 +986,27 @@ Stage Summary:
 - Middleware already has /api/notifications permission (notifications:read)
 - Dynamic module badge in header (Module 12 for notifications)
 - Footer updated to reflect all twelve modules
+
+---
+Task ID: 12-Main
+Agent: Main Agent
+Task: Module 12 — Notifications et alertes (Complete Development)
+
+Work Log:
+- Added Notification and NotificationPreference models to Prisma schema
+- Added User relations: notificationsReceived, notificationsSent, notificationPreferences
+- Ran prisma db push against Neon PostgreSQL — tables created ✅
+- Delegated API development to subagent (Task 12-2a) — 4 API route files created ✅
+- Delegated frontend development to subagent (Task 12-3) — notifications-section.tsx + integration ✅
+- Verified lint: clean ✅
+- Verified API endpoints on Vercel: 401 (correct for unauthenticated) ✅
+- Pushed to GitHub ✅
+
+Stage Summary:
+- Module 12 fully implemented with 4 API routes + 1 frontend section + sidebar integration
+- API: /api/notifications (CRUD + tab filtering), /api/notifications/[id] (mark-read/unread/delete/restore), /api/notifications/stats (KPIs), /api/notifications/preferences (GET/PUT)
+- Frontend: 3 tabs (Notifications reçues, Envoyées, Paramètres), KPI cards, card-based notification list, view dialog, preferences form
+- Prisma: Notification (17 fields) + NotificationPreference (11 fields) models with indexes
+- Neon PostgreSQL: schema synced
+- All permissions: notifications:read, notifications:*
+- Middleware: /api/notifications → notifications:read
