@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// MODULE 1 — Authentification et gestion des rôles
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  ptaCode       String?   @unique
+  position      String?
+  department    String?
+  avatar        String?
+  phone         String?
+  isActive      Boolean   @default(true)
+  isLocked      Boolean   @default(false)
+  lastLoginAt   DateTime?
+  deletedAt     DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  roles         UserRole[]
+  auditLogs     AuditLog[]
+
+  directionsHead Direction[] @relation("DirectionHead")
+  unitsHead      Unit[]      @relation("UnitHead")
+
+  activitiesResponsible Activity[]  @relation("ActivityResponsible")
+  activitiesValidator   Activity[]  @relation("ActivityValidator")
+  activitiesCreatedBy   Activity[]  @relation("ActivityCreatedBy")
+  activitiesUpdatedBy   Activity[]  @relation("ActivityUpdatedBy")
+
+  @@map("users")
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  module      String
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldValue   String?
+  newValue   String?
+  ipAddress  String?
+  userAgent  String?
+  details    String?
+
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+// ============================================================
+// MODULE 2 — Administration organisationnelle AAEA
+// ============================================================
+
+model Direction {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  headUserId  String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  units       Unit[]
+  headUser    User?     @relation("DirectionHead", fields: [headUserId], references: [id], onDelete: SetNull)
+  activities  Activity[]
+
+  @@map("directions")
+}
+
+model Unit {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  directionId String
+  headUserId  String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  direction   Direction @relation(fields: [directionId], references: [id], onDelete: Cascade)
+  headUser    User?     @relation("UnitHead", fields: [headUserId], references: [id], onDelete: SetNull)
+
+  @@map("units")
+}
+
+// ============================================================
+// MODULE 3 — Référentiel stratégique
+// ============================================================
+
+model StrategicAxis {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  name            String
+  objective       String?
+  expectedResults String?
+  indicators      String?
+  concernedUnits  String?
+  order           Int       @default(0)
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  activitiesPrimary   Activity[] @relation("PrimaryAxis")
+  activitiesSecondary Activity[] @relation("SecondaryAxis")
+
+  @@map("strategic_axes")
+}
+
+// ============================================================
+// MODULE 4 — Référentiel ACBF
+// ============================================================
+
+model AcbfDomain {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  deliverables      AcbfDeliverable[]
+  activities        Activity[]
+
+  @@map("acbf_domains")
+}
+
+model AcbfDeliverable {
+  id          String    @id @default(cuid())
+  domainId    String
+  code        String    @unique
+  name        String
+  description String?
+  priority    String?
+  status      String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  domain      AcbfDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  activities  Activity[]
+
+  @@map("acbf_deliverables")
+}
+
+// ============================================================
+// MODULE 5 — Gestion des PTA individuels
+// ============================================================
+
+model Activity {
+  id                   String    @id @default(cuid())
+  activityCode         String    @unique
+  responsibleId        String
+  directionId          String?
+  primaryAxisId        String?
+  secondaryAxisId      String?
+  acbfDomainId         String?
+  acbfDeliverableId    String?
+  annualObjective      String?
+  title                String
+  detailedTasks        String?
+  expectedDeliverable  String?
+  validatorId          String?
+  startDate            DateTime?
+  endDate              DateTime?
+  priority             String    @default("Moyenne")
+  performanceIndicator String?
+  verificationSource   String?
+  status               String    @default("Non démarré")
+  progressRate         Float     @default(0)
+  riskDescription      String?
+  comments             String?
+  validationStatus     String    @default("Brouillon")
+  nature               String?
+  dependency           String?
+  duration             String?
+
+  isLocked             Boolean   @default(false)
+  isActive             Boolean   @default(true)
+  deletedAt            DateTime?
+
+  createdById          String?
+  updatedById          String?
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  responsible          User           @relation("ActivityResponsible", fields: [responsibleId], references: [id], onDelete: Restrict)
+  direction            Direction?     @relation(fields: [directionId], references: [id], onDelete: SetNull)
+  primaryAxis          StrategicAxis? @relation("PrimaryAxis", fields: [primaryAxisId], references: [id], onDelete: SetNull)
+  secondaryAxis        StrategicAxis? @relation("SecondaryAxis", fields: [secondaryAxisId], references: [id], onDelete: SetNull)
+  acbfDomain           AcbfDomain?    @relation(fields: [acbfDomainId], references: [id], onDelete: SetNull)
+  acbfDeliverable      AcbfDeliverable? @relation(fields: [acbfDeliverableId], references: [id], onDelete: SetNull)
+  validator            User?          @relation("ActivityValidator", fields: [validatorId], references: [id], onDelete: SetNull)
+  createdBy            User?          @relation("ActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?          @relation("ActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("activities")
+}
+
+// ============================================================
+// Paramètres de l'application
+// ============================================================
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
