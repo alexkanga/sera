@@ -19,6 +19,7 @@ export type AppSection =
   | "gantt"
   | "performance"
   | "reports"
+  | "notifications"
   | "profile"
   | "change-password";
 

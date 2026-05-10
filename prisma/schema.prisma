@@ -50,6 +50,10 @@ model User {
   reportsGenerated       Report[]         @relation("ReportGenerator")
   reportsValidated       Report[]         @relation("ReportValidator")
 
+  notificationsReceived  Notification[]   @relation("NotificationRecipient")
+  notificationsSent      Notification[]   @relation("NotificationSender")
+  notificationPreferences NotificationPreference? @relation("NotificationPreferences")
+
   @@map("users")
 }
 
@@ -494,6 +498,66 @@ model Report {
   acbfDomain      AcbfDomain?    @relation(fields: [acbfDomainId], references: [id], onDelete: SetNull)
 
   @@map("reports")
+}
+
+// ============================================================
+// MODULE 12 — Notifications et alertes
+// ============================================================
+
+model Notification {
+  id           String    @id @default(cuid())
+  userId       String    // Destinataire
+  title        String
+  message      String    @db.Text
+  type         String    // "info", "warning", "error", "success", "alert"
+  category     String    @default("système") // "activité", "échéance", "validation", "rapport", "système", "alerte"
+  priority     String    @default("normale") // "basse", "normale", "haute", "urgente"
+  isRead       Boolean   @default(false)
+  readAt       DateTime?
+  actionUrl    String?   // Lien vers l'entité concernée (ex: /api/activities/xxx)
+  entityId     String?   // ID de l'entité liée
+  entityType   String?   // "Activity", "Report", "EvidenceFile", etc.
+  sentByEmail  Boolean   @default(false)
+  sentAt       DateTime? // Date d'envoi (null = pas encore envoyé)
+  expiresAt    DateTime? // Date d'expiration (optionnelle)
+
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+
+  createdById  String?   // Expéditeur (null = système)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?     @relation("NotificationSender", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead])
+  @@index([userId, category])
+  @@index([expiresAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  emailEnabled          Boolean  @default(true)
+  pushEnabled           Boolean  @default(false)
+  activityAlerts        Boolean  @default(true)
+  deadlineReminders     Boolean  @default(true)
+  validationAlerts      Boolean  @default(true)
+  reportAlerts          Boolean  @default(true)
+  systemAlerts          Boolean  @default(true)
+  deadlineReminderDays  Int      @default(3) // Jours avant échéance pour rappel
+  quietHoursStart       String?  // "22:00" — début des heures silencieuses
+  quietHoursEnd         String?  // "08:00" — fin des heures silencieuses
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user                  User     @relation("NotificationPreferences", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
 }
 
 // ============================================================

@@ -866,3 +866,123 @@ Stage Summary:
 - FIX: Ran prisma db push against Neon PostgreSQL + added auto-sync to build script
 - Both /api/reports and /api/reports/stats now work correctly on Vercel
 - Future module deployments will auto-sync schema — no more manual db:push needed
+
+---
+Task ID: 12-2a
+Agent: Module 12 API Agent
+Task: Module 12 — Notifications et alertes (API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm Notification and NotificationPreference models ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Read existing /api/activities/route.ts, /api/evidence/route.ts, /api/evidence/[id]/route.ts for code patterns ✅
+- Created `src/app/api/notifications/route.ts` ✅
+  - GET /api/notifications — list with tab (all/unread/read/sent), category, type, priority, search, pagination
+  - When tab="sent": query WHERE createdById = currentUser.id
+  - When tab="all"/"unread"/"read": query WHERE userId = currentUser.id
+  - Include user (recipient) and createdBy (sender) relations
+  - Zod validate all query params with querySchema
+  - Permission: notifications:read
+  - POST /api/notifications — create with Zod validation
+  - Body: userId (required recipient), title, message, type, category, priority, actionUrl, entityId, entityType, expiresAt
+  - Validate userId exists in DB
+  - Set createdById to currentUser.id, sentAt to now()
+  - Audit log: CREATE Notification
+  - Permission: notifications:* (only admins/managers can create manual notifications)
+- Created `src/app/api/notifications/[id]/route.ts` ✅
+  - PATCH with action-based operations:
+  - "mark-read": Set isRead=true, readAt=now
+  - "mark-unread": Set isRead=false, readAt=null
+  - "delete": Soft delete (deletedAt=now, isActive=false)
+  - "restore": Unarchive (deletedAt=null, isActive=true)
+  - User can only modify their own notifications (admin:* can modify any)
+  - All actions include audit logging
+  - Permission: notifications:read (plus ownership check)
+- Created `src/app/api/notifications/stats/route.ts` ✅
+  - GET /api/notifications/stats — KPIs for current user
+  - Returns: total, unread, read, byType, byCategory, byPriority, lastNotificationAt
+  - Parallel DB queries for performance (7 queries)
+  - Permission: notifications:read
+- Created `src/app/api/notifications/preferences/route.ts` ✅
+  - GET /api/notifications/preferences — get current user's notification preferences
+  - If no preferences exist, create default ones automatically
+  - PUT /api/notifications/preferences — update with upsert pattern
+  - Body: emailEnabled, pushEnabled, activityAlerts, deadlineReminders, validationAlerts, reportAlerts, systemAlerts, deadlineReminderDays, quietHoursStart, quietHoursEnd
+  - Audit log on update
+  - Permission: notifications:read
+- Updated `src/middleware.ts`: Added "/api/notifications": "notifications:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+
+Stage Summary:
+- Module 12 API routes fully implemented with 4 route files
+- Notifications list API: tab-based filtering (all/unread/read/sent), category/type/priority/search filters, pagination
+- Notifications create API: Zod validation, recipient existence check, sentAt timestamp, audit log, admin-only permission
+- Notifications actions API: 4 actions (mark-read, mark-unread, delete/soft-delete, restore), ownership check, audit logging
+- Notifications stats API: 7 parallel queries, KPIs by type/category/priority, unread/read/total counts
+- Notifications preferences API: auto-create defaults on GET, upsert on PUT, Zod validation, audit logging
+- All routes follow existing project patterns (auth check, permissions, Zod, error.issues, French errors, pagination format)
+- Middleware updated with notifications:read permission for /api/notifications routes
+
+---
+Task ID: 12-3
+Agent: Module 12 Frontend Agent
+Task: Module 12 — Notifications et alertes (Frontend Section)
+
+Work Log:
+- Read worklog.md for project context and reports-section.tsx as main pattern reference ✅
+- Read page.tsx, app-store.ts, and existing UI components to understand integration patterns ✅
+- Created `src/components/sections/notifications-section.tsx` (~700 lines) ✅
+  - Types: Notification, NotificationPreference, NotificationStats interfaces (not from Prisma)
+  - Constants: NOTIFICATION_TYPES, NOTIFICATION_CATEGORIES, NOTIFICATION_PRIORITIES
+  - Badge/color mappings: TYPE_COLORS, PRIORITY_COLORS, CATEGORY_COLORS, TYPE_BORDER_COLORS, TYPE_ICONS
+  - Permission helper: hasPermission() with notifications:*, admin:* support
+  - Date formatting: formatDate(), formatDateTime(), timeAgo() in French locale
+  - Main component: NotificationsSection with 3 tabs (Notifications, Envoyées, Paramètres)
+  - Tab 1 (Notifications received):
+    - 4 KPI cards: Total, Non lues (red badge), Lues, Dernière notification
+    - Filter bar: search, category/type/priority dropdowns, "Mark all read" button
+    - Notification cards list with type icons, title, message (truncated), time ago, category/priority badges
+    - Unread notifications: left border color + bolder title + emerald background tint
+    - Click card → marks as read + opens view dialog
+    - Actions: mark read/unread, delete
+    - Empty state, loading skeleton, error state with retry
+    - Pagination with page numbers
+  - Tab 2 (Sent notifications):
+    - Same card layout as Tab 1 but with tab=sent API parameter
+    - No "mark read" action
+    - Shows recipient name on each card
+    - Search filter + pagination
+  - Tab 3 (Preferences):
+    - Toggle switches: emailEnabled, pushEnabled, activityAlerts, deadlineReminders, validationAlerts, reportAlerts, systemAlerts
+    - Number input: deadlineReminderDays
+    - Time inputs: quietHoursStart, quietHoursEnd
+    - Save button → PUT /api/notifications/preferences
+    - Cancel button → reset form
+  - View dialog: full notification details with type/category/priority badges, dates, entity reference, action URL link, created by info, email sent indicator
+  - API calls: GET /api/notifications (all/sent/unread), GET /api/notifications/stats, GET /api/notifications/preferences, PATCH /api/notifications/{id}, PUT /api/notifications/preferences
+  - useCallback for all fetch functions, useMemo for filtered data
+  - Responsive design (mobile-first), French text, emerald green theme
+- Updated `src/stores/app-store.ts`: Added "notifications" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added import: NotificationsSection component
+  - Added `notifItems` navigation array for Module 12 (notifications with Bell icon)
+  - Added SectionContent switch case for "notifications"
+  - Added SidebarGroup "Module 12 — Notifications" after Module 11 group
+  - Updated `getSectionTitle` to include notifItems in search
+  - Updated header badge: shows "Module 12" for notifications
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1 à 12"
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 12 frontend section fully implemented for Notifications et alertes
+- NotificationsSection with 3 tabs: received notifications, sent notifications, user preferences
+- 4 KPI cards, filter bar, card-based notification list (not table), view dialog, preferences form
+- Permission checks: notifications:read, notifications:update, notifications:delete
+- Card UX with type icons, unread indicators, category/priority badges, time ago
+- Preferences: 7 toggle switches, deadline reminder days, quiet hours
+- All components use "use client", shadcn/ui, emerald green theme, French text
+- Middleware already has /api/notifications permission (notifications:read)
+- Dynamic module badge in header (Module 12 for notifications)
+- Footer updated to reflect all twelve modules
