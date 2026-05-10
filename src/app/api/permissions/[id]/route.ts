@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/permissions";
+import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const updatePermissionSchema = z.object({
@@ -19,9 +19,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "permissions:read" || p === "permissions:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "permissions:read");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
@@ -58,9 +56,7 @@ export async function PUT(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "permissions:update" || p === "permissions:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "permissions:update");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }

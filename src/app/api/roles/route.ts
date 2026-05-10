@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/permissions";
+import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const createRoleSchema = z.object({
@@ -18,9 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "roles:read" || p === "roles:*" || p === "users:read" || p === "users:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "roles:read");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
@@ -83,9 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "roles:create" || p === "roles:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "roles:create");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }

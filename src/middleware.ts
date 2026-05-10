@@ -6,11 +6,11 @@ import { getToken } from "next-auth/jwt";
 const publicRoutes = ["/login", "/api/auth", "/api/test-env"];
 
 // Routes qui nécessitent des permissions spécifiques
-const routePermissions: Record<string, string[]> = {
-  "/api/users": ["users:read", "users:*"],
-  "/api/roles": ["roles:read", "roles:*"],
-  "/api/permissions": ["permissions:read", "permissions:*"],
-  "/api/audit-logs": ["audit:read", "audit:*", "admin:*"],
+const routePermissions: Record<string, string> = {
+  "/api/users": "users:read",
+  "/api/roles": "roles:read",
+  "/api/permissions": "permissions:read",
+  "/api/audit-logs": "audit:read",
 };
 
 export async function middleware(request: NextRequest) {
@@ -54,9 +54,16 @@ export async function middleware(request: NextRequest) {
     ) || [];
 
     // Vérifier les permissions de la route
-    for (const [routePrefix, requiredPermissions] of Object.entries(routePermissions)) {
+    for (const [routePrefix, requiredPermission] of Object.entries(routePermissions)) {
       if (pathname.startsWith(routePrefix)) {
-        const hasPermission = requiredPermissions.some((p) => userPermissions.includes(p));
+        // Check exact permission, module wildcard (e.g. "users:*"), and admin wildcard ("admin:*")
+        const hasPermission = userPermissions.some((p) => {
+          if (p === "admin:*") return true;
+          if (p === requiredPermission) return true;
+          const permModule = requiredPermission.split(":")[0];
+          if (p === `${permModule}:*`) return true;
+          return false;
+        });
         if (!hasPermission) {
           return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
         }

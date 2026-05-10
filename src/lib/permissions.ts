@@ -36,6 +36,40 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 /**
+ * Vérifie si un utilisateur a une permission spécifique.
+ * La permission "admin:*" override toutes les autres permissions.
+ * Si un requiredPermission est "users:read", alors "users:*" et "admin:*" sont aussi acceptés.
+ */
+export function userHasPermission(
+  user: AuthUser,
+  requiredPermission: string
+): boolean {
+  return user.roles.some((r) =>
+    r.permissions.some((p) => {
+      // admin:* overrides everything
+      if (p === "admin:*") return true;
+      // Exact match
+      if (p === requiredPermission) return true;
+      // Module wildcard: "users:*" matches "users:read", "users:create", etc.
+      const permModule = requiredPermission.split(":")[0];
+      if (p === `${permModule}:*`) return true;
+      return false;
+    })
+  );
+}
+
+/**
+ * Vérifie si l'utilisateur a au moins une des permissions spécifiées.
+ * "admin:*" override tout.
+ */
+export function userHasAnyPermission(
+  user: AuthUser,
+  requiredPermissions: string[]
+): boolean {
+  return requiredPermissions.some((perm) => userHasPermission(user, perm));
+}
+
+/**
  * Vérifie si l'utilisateur courant a un rôle spécifique
  */
 export async function hasRole(roleCode: RoleCode): Promise<boolean> {
@@ -50,7 +84,7 @@ export async function hasRole(roleCode: RoleCode): Promise<boolean> {
 export async function hasPermission(permissionCode: PermissionCode): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
-  return user.roles.some((r) => r.permissions.includes(permissionCode));
+  return userHasPermission(user, permissionCode);
 }
 
 /**
@@ -59,9 +93,7 @@ export async function hasPermission(permissionCode: PermissionCode): Promise<boo
 export async function hasAnyPermission(permissionCodes: PermissionCode[]): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
-  return user.roles.some((r) => 
-    r.permissions.some((p) => permissionCodes.includes(p))
-  );
+  return userHasAnyPermission(user, permissionCodes);
 }
 
 /**

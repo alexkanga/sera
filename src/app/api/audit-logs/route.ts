@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/permissions";
+import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 
 // GET /api/audit-logs — Journal d'audit
 export async function GET(request: NextRequest) {
@@ -10,9 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "audit:read" || p === "audit:*" || p === "admin:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "audit:read");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }

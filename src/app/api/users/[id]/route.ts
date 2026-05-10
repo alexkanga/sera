@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/permissions";
+import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const updateUserSchema = z.object({
@@ -29,9 +29,7 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "users:read" || p === "users:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "users:read");
     // Un utilisateur peut voir son propre profil
     const { id } = await params;
     if (!hasAccess && currentUser.id !== id) {
@@ -100,9 +98,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "users:update" || p === "users:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "users:update");
     // Un utilisateur peut modifier son propre profil (nom, téléphone, avatar)
     if (!hasAccess && currentUser.id !== id) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -238,9 +234,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = currentUser.roles.some((r) =>
-      r.permissions.some((p) => p === "users:archive" || p === "users:*")
-    );
+    const hasAccess = userHasPermission(currentUser, "users:archive");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }

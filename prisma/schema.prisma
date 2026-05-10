@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -112,11 +112,11 @@ model AuditLog {
   action     String
   entity     String
   entityId   String?
-  oldValue   String?
-  newValue   String?
+  oldValue   String?  @db.Text
+  newValue   String?  @db.Text
   ipAddress  String?
   userAgent  String?
-  details    String?
+  details    String?  @db.Text
 
   createdAt  DateTime @default(now())
 
@@ -133,7 +133,7 @@ model Direction {
   id          String    @id @default(cuid())
   code        String    @unique
   name        String
-  description String?
+  description String?   @db.Text
   headUserId  String?
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
@@ -174,10 +174,10 @@ model StrategicAxis {
   id              String    @id @default(cuid())
   code            String    @unique
   name            String
-  objective       String?
-  expectedResults String?
-  indicators      String?
-  concernedUnits  String?
+  objective       String?   @db.Text
+  expectedResults String?   @db.Text
+  indicators      String?   @db.Text
+  concernedUnits  String?   @db.Text
   order           Int       @default(0)
   isActive        Boolean   @default(true)
   deletedAt       DateTime?
@@ -217,7 +217,7 @@ model AcbfDeliverable {
   domainId    String
   code        String    @unique
   name        String
-  description String?
+  description String?   @db.Text
   priority    String?
   status      String?
   isActive    Boolean   @default(true)
@@ -245,23 +245,23 @@ model Activity {
   secondaryAxisId      String?
   acbfDomainId         String?
   acbfDeliverableId    String?
-  annualObjective      String?
+  annualObjective      String?   @db.Text
   title                String
-  detailedTasks        String?
-  expectedDeliverable  String?
+  detailedTasks        String?   @db.Text
+  expectedDeliverable  String?   @db.Text
   validatorId          String?
   startDate            DateTime?
   endDate              DateTime?
   priority             String    @default("Moyenne")
-  performanceIndicator String?
-  verificationSource   String?
+  performanceIndicator String?   @db.Text
+  verificationSource   String?   @db.Text
   status               String    @default("Non démarré")
   progressRate         Float     @default(0)
-  riskDescription      String?
-  comments             String?
+  riskDescription      String?   @db.Text
+  comments             String?   @db.Text
   validationStatus     String    @default("Brouillon")
   nature               String?
-  dependency           String?
+  dependency           String?   @db.Text
   duration             String?
 
   isLocked             Boolean   @default(false)
