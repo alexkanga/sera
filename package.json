@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d'=' -f2-) next dev -p 3000 2>&1 | tee dev.log",
-    "build": "DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d'=' -f2-) prisma generate && next build",
+    "build": "DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d'=' -f2-) prisma generate && prisma db push --accept-data-loss && next build",
     "start": "DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d'=' -f2-) next start",
     "lint": "eslint .",
     "db:push": "DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d'=' -f2-) prisma db push",
