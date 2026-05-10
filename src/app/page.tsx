@@ -17,6 +17,9 @@ import {
   Building2,
   Network,
   LayoutGrid,
+  Target,
+  BookOpen,
+  FileCheck,
 } from "lucide-react";
 
 import { useAppStore, type AppSection } from "@/stores/app-store";
@@ -30,6 +33,9 @@ import { ChangePasswordSection } from "@/components/sections/change-password-sec
 import { DirectionsSection } from "@/components/sections/directions-section";
 import { UnitsSection } from "@/components/sections/units-section";
 import { OrgOverviewSection } from "@/components/sections/org-overview-section";
+import { StrategicAxesSection } from "@/components/sections/strategic-axes-section";
+import { AcbfDomainsSection } from "@/components/sections/acbf-domains-section";
+import { AcbfDeliverablesSection } from "@/components/sections/acbf-deliverables-section";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -84,6 +90,25 @@ const orgItems: {
   { section: "units", label: "Unités", icon: Network },
 ];
 
+// Navigation items for Module 3
+const strategyItems: {
+  section: AppSection;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { section: "strategic-axes", label: "Axes stratégiques", icon: Target },
+];
+
+// Navigation items for Module 4
+const acbfItems: {
+  section: AppSection;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { section: "acbf-domains", label: "Domaines ACBF", icon: BookOpen },
+  { section: "acbf-deliverables", label: "Livrables ACBF", icon: FileCheck },
+];
+
 const accountItems: {
   section: AppSection;
   label: string;
@@ -112,6 +137,12 @@ function SectionContent({ section }: { section: AppSection }) {
       return <UnitsSection />;
     case "org-overview":
       return <OrgOverviewSection />;
+    case "strategic-axes":
+      return <StrategicAxesSection />;
+    case "acbf-domains":
+      return <AcbfDomainsSection />;
+    case "acbf-deliverables":
+      return <AcbfDeliverablesSection />;
     case "profile":
       return <ProfileSection />;
     case "change-password":
@@ -123,7 +154,7 @@ function SectionContent({ section }: { section: AppSection }) {
 
 // Get section title for the header
 function getSectionTitle(section: AppSection): string {
-  const item = [...navItems, ...orgItems, ...accountItems].find((i) => i.section === section);
+  const item = [...navItems, ...orgItems, ...strategyItems, ...acbfItems, ...accountItems].find((i) => i.section === section);
   return item?.label ?? "Tableau de bord";
 }
 
@@ -267,6 +298,66 @@ export default function HomePage() {
 
           <SidebarSeparator />
 
+          {/* Module 3 — Stratégie */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Module 3 — Stratégie
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {strategyItems.map((item) => (
+                  <SidebarMenuItem key={item.section}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.section}
+                      onClick={() => setCurrentSection(item.section)}
+                      tooltip={item.label}
+                      className={
+                        currentSection === item.section
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
+          {/* Module 4 — ACBF */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Module 4 — ACBF
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {acbfItems.map((item) => (
+                  <SidebarMenuItem key={item.section}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.section}
+                      onClick={() => setCurrentSection(item.section)}
+                      tooltip={item.label}
+                      className={
+                        currentSection === item.section
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
           {/* Account Group */}
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -388,7 +479,7 @@ export default function HomePage() {
               variant="secondary"
               className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 text-[10px] px-1.5 py-0"
             >
-              {["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
+              {["acbf-domains", "acbf-deliverables"].includes(currentSection) ? "Module 4" : ["strategic-axes"].includes(currentSection) ? "Module 3" : ["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
             </Badge>
           </div>
 
@@ -455,7 +546,7 @@ export default function HomePage() {
           <footer className="mt-auto border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 dark:text-slate-500">
               <p>&copy; {new Date().getFullYear()} AAEA — African Water and Sanitation Association</p>
-              <p>AAEA Pilotage 360 — Modules 1 &amp; 2</p>
+              <p>AAEA Pilotage 360 — Modules 1, 2, 3 &amp; 4</p>
             </div>
           </footer>
         </div>

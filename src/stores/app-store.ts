@@ -9,6 +9,9 @@ export type AppSection =
   | "directions"
   | "units"
   | "org-overview"
+  | "strategic-axes"
+  | "acbf-domains"
+  | "acbf-deliverables"
   | "profile"
   | "change-password";
 

@@ -148,3 +148,129 @@ Stage Summary:
 - Database: Neon PostgreSQL in sync, all 3 directions seeded with head users
 - Frontend: 3 new section components, Module 2 sidebar navigation group
 - GitHub: pushed to https://github.com/alexkanga/sera.git
+
+---
+Task ID: 4
+Agent: Module 3 Agent
+Task: Module 3 — Référentiel stratégique (Strategic Axes CRUD)
+
+Work Log:
+- Read worklog.md for project context and directions API/section for code patterns ✅
+- Read Prisma schema to confirm StrategicAxis model (code, name, objective, expectedResults, indicators, concernedUnits, order, isActive, deletedAt) ✅
+- Created `src/app/api/strategic-axes/route.ts` ✅
+  - GET /api/strategic-axes — list with search, status filter (active/archived/all), pagination, activity counts
+  - POST /api/strategic-axes — create with Zod validation, unique code check, audit logging
+  - Permission checks: strategic:read, strategic:create
+- Created `src/app/api/strategic-axes/[id]/route.ts` ✅
+  - GET /api/strategic-axes/[id] — detail with activity counts (primary + secondary)
+  - PUT /api/strategic-axes/[id] — update with Zod validation, unique code check, audit logging
+  - PATCH /api/strategic-axes/[id] — archive/restore soft delete with audit logging
+  - Permission checks: strategic:read, strategic:update, strategic:archive
+- Created `src/components/sections/strategic-axes-section.tsx` ✅
+  - Full CRUD management for Strategic Axes
+  - Data table with columns: Code, Nom, Objectif, Résultats attendus, Indicateurs, Ordre, Statut, Actions
+  - Search bar (filters by name/code)
+  - Status filter tabs (Actifs / Archivés / Tous) using shadcn Tabs
+  - Create dialog with Zod-validated form (code, name, objective, expectedResults, indicators, concernedUnits, order)
+  - Edit dialog pre-filled with axis data
+  - View dialog with all fields read-only, plus activity counts (primary + secondary)
+  - Archive/Restore with AlertDialog confirmation
+  - Pagination with page number buttons
+  - Emerald green color theme, French text, loading/error/empty states
+- Updated `src/stores/app-store.ts`: Added "strategic-axes" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added import: Target icon from lucide-react, StrategicAxesSection component
+  - Added `strategyItems` navigation array for Module 3
+  - Added SectionContent switch case for "strategic-axes"
+  - Added SidebarGroup "Module 3 — Stratégie" after Module 2 group
+  - Updated `getSectionTitle` to include strategyItems in search
+  - Updated header badge: shows "Module 3" for strategic-axes, "Module 2" for org sections, "Module 1" for others
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1, 2 & 3"
+- Updated `src/middleware.ts`: Added "/api/strategic-axes": "strategic:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 3 fully implemented with backend API routes and frontend section
+- Strategic Axes API: CRUD with soft delete, audit logging, permission checks (strategic:read/create/update/archive)
+- StrategicAxesSection: Full CRUD data table with search, status tabs, create/edit/view/archive dialogs, pagination
+- All components use "use client", shadcn/ui, Zod validation, emerald green theme, French text
+- All components follow existing code patterns from directions-section.tsx
+- Middleware permissions updated for strategic API routes (strategic:read)
+- Dynamic module badge in header (Module 1 / Module 2 / Module 3)
+- Footer updated to reflect all three modules
+
+---
+Task ID: 5
+Agent: Module 4 Agent
+Task: Module 4 — Référentiel ACBF (ACBF Domains & Deliverables CRUD)
+
+Work Log:
+- Read worklog.md for project context and directions/strategic-axes API/section for code patterns ✅
+- Read Prisma schema to confirm AcbfDomain and AcbfDeliverable models ✅
+- Created `src/app/api/acbf-domains/route.ts` ✅
+  - GET /api/acbf-domains — list with search, status filter (active/archived/all), pagination, deliverables count
+  - POST /api/acbf-domains — create with Zod validation, unique code check, audit logging
+  - Permission checks: acbf:read, acbf:create
+- Created `src/app/api/acbf-domains/[id]/route.ts` ✅
+  - GET /api/acbf-domains/[id] — detail with deliverables list
+  - PUT /api/acbf-domains/[id] — update with Zod validation, unique code check, audit logging
+  - PATCH /api/acbf-domains/[id] — archive/restore soft delete with audit logging
+  - Permission checks: acbf:read, acbf:update, acbf:archive
+- Created `src/app/api/acbf-deliverables/route.ts` ✅
+  - GET /api/acbf-deliverables — list with search, domainId filter, status filter, pagination, domain info
+  - POST /api/acbf-deliverables — create with Zod validation, unique code check, domain existence check, audit logging
+  - Permission checks: acbf:read, acbf:create
+- Created `src/app/api/acbf-deliverables/[id]/route.ts` ✅
+  - GET /api/acbf-deliverables/[id] — detail with domain info
+  - PUT /api/acbf-deliverables/[id] — update with Zod validation, unique code check, domain existence check, audit logging
+  - PATCH /api/acbf-deliverables/[id] — archive/restore soft delete with audit logging
+  - Permission checks: acbf:read, acbf:update, acbf:archive
+- Created `src/components/sections/acbf-domains-section.tsx` ✅
+  - Full CRUD management for ACBF Domains
+  - Data table with columns: Ordre, Code, Nom, Livrables (count), Statut, Actions
+  - Search bar (filters by name/code)
+  - Status filter tabs (Actifs / Archivés / Tous) using shadcn Tabs
+  - Create dialog with Zod-validated form (code, name, order)
+  - Edit dialog pre-filled with domain data
+  - View dialog with all fields + list of deliverables (code, name, priority, status), scrollable
+  - Archive/Restore with AlertDialog confirmation
+  - Pagination with page number buttons
+  - Emerald green color theme, French text, loading/error/empty states
+- Created `src/components/sections/acbf-deliverables-section.tsx` ✅
+  - Full CRUD management for ACBF Deliverables
+  - Data table with columns: Code, Nom, Domaine ACBF, Priorité, Statut, Actions
+  - Search bar (filters by name/code)
+  - Domain filter dropdown populated from /api/acbf-domains
+  - Status filter tabs (Actifs / Archivés / Tous)
+  - Create dialog with Zod-validated form (code, name, domainId select, description textarea, priority select, status text)
+  - Edit dialog pre-filled with deliverable data
+  - View dialog with all fields in read-only
+  - Archive/Restore with AlertDialog confirmation
+  - Priority badges: Haute (red), Moyenne (amber), Basse (emerald)
+  - Pagination with page number buttons
+  - Emerald green color theme, French text, loading/error/empty states
+- Updated `src/stores/app-store.ts`: Added "acbf-domains" and "acbf-deliverables" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added imports: BookOpen, FileCheck icons from lucide-react; AcbfDomainsSection, AcbfDeliverablesSection components
+  - Added `acbfItems` navigation array for Module 4 (acbf-domains, acbf-deliverables)
+  - Added SectionContent switch cases for "acbf-domains" and "acbf-deliverables"
+  - Added SidebarGroup "Module 4 — ACBF" after Module 3 group
+  - Updated `getSectionTitle` to include acbfItems in search
+  - Updated header badge: shows "Module 4" for ACBF sections, "Module 3" for strategic, "Module 2" for org, "Module 1" for others
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1, 2, 3 & 4"
+- Updated `src/middleware.ts`: Added "/api/acbf-domains": "acbf:read" and "/api/acbf-deliverables": "acbf:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 4 fully implemented with backend API routes and frontend sections
+- ACBF Domains API: CRUD with soft delete, audit logging, permission checks (acbf:read/create/update/archive)
+- ACBF Deliverables API: CRUD with soft delete, audit logging, permission checks (acbf:read/create/update/archive)
+- AcbfDomainsSection: Full CRUD data table with search, status tabs, create/edit/view/archive dialogs, pagination
+- AcbfDeliverablesSection: Full CRUD data table with search, domain filter, status tabs, create/edit/view/archive dialogs, pagination
+- All components use "use client", shadcn/ui, Zod validation, emerald green theme, French text
+- All components follow existing code patterns from directions-section.tsx and strategic-axes-section.tsx
+- Middleware permissions updated for ACBF API routes (acbf:read)
+- Dynamic module badge in header (Module 1 / Module 2 / Module 3 / Module 4)
+- Footer updated to reflect all four modules
