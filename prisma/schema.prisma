@@ -42,6 +42,9 @@ model User {
 
   uploadedEvidence   EvidenceFile[] @relation("EvidenceUploader")
   verifiedEvidence   EvidenceFile[] @relation("EvidenceVerifier")
+  raciResponsible   RaciMatrix[]   @relation("RaciResponsible")
+  raciAccountable   RaciMatrix[]   @relation("RaciAccountable")
+  raciCreated       RaciMatrix[]   @relation("RaciCreator")
 
   @@map("users")
 }
@@ -191,6 +194,7 @@ model StrategicAxis {
 
   activitiesPrimary   Activity[] @relation("PrimaryAxis")
   activitiesSecondary Activity[] @relation("SecondaryAxis")
+  raciMatrices        RaciMatrix[]
 
   @@map("strategic_axes")
 }
@@ -233,6 +237,7 @@ model AcbfDeliverable {
   domain      AcbfDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
   activities  Activity[]
   evidenceFiles EvidenceFile[]
+  raciMatrix  RaciMatrix?
 
   @@map("acbf_deliverables")
 }
@@ -290,6 +295,7 @@ model Activity {
   updatedBy            User?          @relation("ActivityUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   evidenceFiles        EvidenceFile[]
+  raciMatrix           RaciMatrix?
 
   @@map("activities")
 }
@@ -330,6 +336,45 @@ model EvidenceFile {
   uploadedBy        User              @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
 
   @@map("evidence_files")
+}
+
+// ============================================================
+// MODULE 8 — Matrice RACI
+// ============================================================
+
+model RaciMatrix {
+  id                String    @id @default(cuid())
+  acbfDeliverableId String?   @unique // Link to ACBF deliverable (1:1)
+  activityId        String?   @unique // Optional link to Activity (1:1)
+  strategicAxisId   String?   // Principal strategic axis
+
+  responsible       String?   @db.Text  // R — text description (e.g. "Directeur Exécutif")
+  responsibleUserId String?             // Optional FK to User for R
+  accountable       String?   @db.Text  // A — text description (e.g. "Conseil / Direction Exécutive")
+  accountableUserId String?             // Optional FK to User for A
+  contributors      String?   @db.Text  // C — semicolon-separated text (e.g. "Conformité; DAF; DSMP; MEAL")
+  informed          String?   @db.Text  // I — semicolon-separated text (e.g. "Direction Exécutive; équipes concernées")
+
+  priority          String?             // Niveau de priorité
+  indicativeDeadline DateTime?          // Échéance indicative
+  verificationSource String?  @db.Text  // Source de vérification attendue
+  comments          String?  @db.Text
+
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  acbfDeliverable   AcbfDeliverable? @relation(fields: [acbfDeliverableId], references: [id], onDelete: Cascade)
+  activity          Activity?        @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  strategicAxis     StrategicAxis?   @relation(fields: [strategicAxisId], references: [id], onDelete: SetNull)
+  responsibleUser   User?            @relation("RaciResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  accountableUser   User?            @relation("RaciAccountable", fields: [accountableUserId], references: [id], onDelete: SetNull)
+  createdBy         User?            @relation("RaciCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("raci_matrix")
 }
 
 // ============================================================

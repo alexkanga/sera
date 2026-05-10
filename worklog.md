@@ -658,3 +658,54 @@ Stage Summary:
 - Follows exact same patterns as existing activities API routes
 - Uses error.issues (NOT error.errors) for Zod v4 compatibility
 - French error messages throughout
+
+---
+Task ID: 8a
+Agent: Module 8 API Agent
+Task: Module 8 — Matrice RACI (API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm RaciMatrix model and all relationships ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Read existing /api/evidence/route.ts and /api/evidence/[id]/route.ts for code patterns ✅
+- Read /api/evidence/stats/route.ts for stats endpoint pattern ✅
+- Created `src/app/api/raci/route.ts` ✅
+  - GET /api/raci — list with search (by responsible, accountable, contributors, informed text), acbfDeliverableId filter, activityId filter, strategicAxisId filter, priority filter, responsibleUserId filter, accountableUserId filter, status filter (active/archived/all), pagination (default 20)
+  - Include related: acbfDeliverable (code, name, domain), activity (activityCode, title), strategicAxis (code, name), responsibleUser (name, email), accountableUser (name, email), createdBy (name)
+  - POST /api/raci — create with Zod validation for all RaciMatrix fields
+  - Verify acbfDeliverableId, activityId, strategicAxisId, responsibleUserId, accountableUserId existence
+  - Set createdById from current user
+  - Audit log: CREATE action
+  - Permission: raci:create
+- Created `src/app/api/raci/[id]/route.ts` ✅
+  - GET /api/raci/[id] — detail with all relations loaded (acbfDeliverable, activity, strategicAxis, responsibleUser, accountableUser, createdBy)
+  - PUT /api/raci/[id] — update with Zod validation for updatable fields, FK existence checks for changed IDs, archived entry guard, oldValue/newValue comparison audit log
+  - PATCH /api/raci/[id] — archive (soft delete) and restore actions with audit logging
+  - Permission: raci:read (GET), raci:update (PUT, PATCH)
+- Created `src/app/api/raci/stats/route.ts` ✅
+  - GET /api/raci/stats — Statistics:
+    - Total active entries
+    - RACI role distribution (responsibleFilled, accountableFilled, contributorsFilled, informedFilled)
+    - By priority distribution
+    - By strategic axis (count + axis code/name)
+    - Entries with linked users (responsibleUserId or accountableUserId not null)
+    - Entries with linked deliverables
+    - Entries with linked activities
+    - Overdue count (indicativeDeadline < now AND isActive)
+  - Permission: raci:read
+- Updated `src/middleware.ts`: Added "/api/raci": "raci:read" to routePermissions ✅
+- Ran lint check: all clean ✅
+
+Stage Summary:
+- Module 8 RACI API routes fully implemented with complete CRUD operations
+- RACI list API: search across 4 text fields, 5 FK filters, status filter, pagination, full relation includes
+- RACI create API: full Zod validation, 5 FK existence checks, createdById auto-set, audit logging
+- RACI detail API: all 6 relations loaded with nested domain for acbfDeliverable
+- RACI update API: partial update with archived entry guard, comprehensive audit logging with oldValue/newValue
+- RACI actions API: archive/restore soft delete with audit logging, permission: raci:update
+- RACI stats API: 8 statistics with parallel DB queries, RACI role distribution computation
+- All permission codes: raci:read, raci:create, raci:update, raci:*, admin:*
+- Middleware permissions updated for raci API route (raci:read)
+- Uses error.issues (NOT error.errors) for Zod v4 compatibility
+- French error messages throughout

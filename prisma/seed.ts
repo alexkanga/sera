@@ -172,8 +172,9 @@ async function main() {
   const axesSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Axes strategiques"], { defval: "" });
   const acbfSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Referentiel ACBF"], { defval: "" });
   const ptaSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["PTA consolide AAEA"], { defval: "" });
+  const raciSheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["RACI institutionnelle"], { defval: "" });
 
-  console.log(`  ✅ Excel lu: ${equipeSheet.length} membres, ${axesSheet.length} axes, ${acbfSheet.length} livrables ACBF, ${ptaSheet.length} activités\n`);
+  console.log(`  ✅ Excel lu: ${equipeSheet.length} membres, ${axesSheet.length} axes, ${acbfSheet.length} livrables ACBF, ${ptaSheet.length} activités, ${raciSheet.length} RACI\n`);
 
   // ============================================================
   // 1. Créer les permissions (hardcoded — pas dans l'Excel)
@@ -855,6 +856,91 @@ async function main() {
   console.log(`  ✅ ${activityCreated} activités créées, ${activitySkipped} ignorées, ${activityErrors} erreurs\n`);
 
   // ============================================================
+  // 10. Créer les entrées RACI (depuis l'Excel — 72 entrées)
+  // ============================================================
+  console.log("📋 Création des entrées RACI...");
+
+  let raciCreated = 0;
+  let raciSkipped = 0;
+
+  for (const row of raciSheet) {
+    const deliverableCode = String(row["ID livrable ACBF"] || "").trim();
+    const axisExcel = String(row["Axe stratégique principal"] || "").trim();
+    const responsible = String(row["Responsable principal — R"] || "").trim();
+    const accountable = String(row["Autorité / validateur — A"] || "").trim();
+    const contributors = String(row["Contributeur(s) — C"] || "").trim();
+    const informed = String(row["Informé(s) — I"] || "").trim();
+    const priority = String(row["Niveau de priorité"] || "").trim();
+    const deadline = row["Échéance indicative"];
+    const verificationSource = String(row["Source de vérification attendue"] || "").trim();
+    const comments = String(row["Commentaires"] || "").trim();
+
+    if (!deliverableCode) {
+      raciSkipped++;
+      continue;
+    }
+
+    // Look up acbfDeliverableId by code
+    const acbfDeliverableId = deliverableLookup[deliverableCode] || null;
+    if (!acbfDeliverableId) {
+      raciSkipped++;
+      continue;
+    }
+
+    // Check if RACI entry already exists for this deliverable
+    const existingRaci = await prisma.raciMatrix.findFirst({
+      where: { acbfDeliverableId },
+    });
+    if (existingRaci) {
+      raciSkipped++;
+      continue;
+    }
+
+    // Look up strategicAxisId
+    let strategicAxisId: string | null = null;
+    if (axisExcel) {
+      const axisCode = mapAxeCode(axisExcel);
+      strategicAxisId = axesLookup[axisCode] || null;
+    }
+
+    // Try to map responsible text to a user
+    let responsibleUserId: string | null = null;
+    if (responsible) {
+      responsibleUserId = findUserByValidatorName(responsible, usersByPosition, usersByPtaCode);
+    }
+
+    // Try to map accountable text to a user
+    let accountableUserId: string | null = null;
+    if (accountable) {
+      accountableUserId = findUserByValidatorName(accountable, usersByPosition, usersByPtaCode);
+    }
+
+    try {
+      await prisma.raciMatrix.create({
+        data: {
+          acbfDeliverableId,
+          strategicAxisId,
+          responsible: responsible || null,
+          responsibleUserId,
+          accountable: accountable || null,
+          accountableUserId,
+          contributors: contributors || null,
+          informed: informed || null,
+          priority: priority || null,
+          indicativeDeadline: parseExcelDate(deadline),
+          verificationSource: verificationSource || null,
+          comments: comments || null,
+        },
+      });
+      raciCreated++;
+    } catch (err) {
+      console.log(`  ❌ Erreur RACI ${deliverableCode}: ${err}`);
+      raciSkipped++;
+    }
+  }
+  console.log(`  ✅ ${raciCreated} entrées RACI créées, ${raciSkipped} ignorées\n`);
+
+  // ============================================================
   // Résumé final
   // ============================================================
   console.log("═══════════════════════════════════════════════════");
@@ -867,6 +953,7 @@ async function main() {
   console.log(`     ${deliverableCount} livrables ACBF`);
   console.log(`     ${equipeSheet.length} membres de l'équipe`);
   console.log(`     ${activityCreated} activités PTA`);
+  console.log(`     ${raciCreated} entrées RACI`);
   console.log("  🔐 Comptes de connexion :");
   console.log("     Admin    : admin@aaea.org / Admin2026!");
   console.log("     Fantomas : fantomas / admin  (email: fantomas@aaea.org)");

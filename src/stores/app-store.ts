@@ -15,6 +15,7 @@ export type AppSection =
   | "activities"
   | "pta-consolide"
   | "evidence"
+  | "raci"
   | "profile"
   | "change-password";
 
