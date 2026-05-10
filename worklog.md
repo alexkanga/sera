@@ -363,3 +363,26 @@ Stage Summary:
 - Hardcoded permissions, roles, super admin, and Fantomas account preserved
 - Excel file path: upload/20260506 PTA_Master_AAEA_2026.xlsx
 - All data mappings follow the specified field mapping rules
+
+---
+Task ID: Vercel-Fix
+Agent: Main Agent
+Task: Fix Vercel deployment compilation error (skills/image-edit/scripts/image-edit.ts)
+
+Work Log:
+- Analyzed the root cause: skills/ directory was tracked by git and deployed to Vercel despite being in .gitignore
+- The file skills/image-edit/scripts/image-edit.ts had a type error: `images` property doesn't exist on `CreateImageEditBody` (should be `image`)
+- This is a non-project file that should never be compiled by Vercel
+- Applied 3-layer defense fix:
+  - Layer 1: Changed tsconfig.json include from `**/*.ts` to `src/**/*.ts` (restrict scope to src/ only)
+  - Layer 2: Removed skills/, examples/, agent-ctx/, mini-services/ from git tracking with `git rm -r --cached`
+  - Layer 3: Added examples/, agent-ctx/, mini-services/ to .gitignore (skills/ already there)
+- Verified dev server and lint still work correctly
+- Committed with descriptive message and pushed to GitHub
+
+Stage Summary:
+- Vercel build will no longer attempt to compile non-project TypeScript files
+- 432 files removed from git tracking (skills/ had hundreds of files including broken TypeScript)
+- tsconfig.json include restricted to src/ directory only
+- .gitignore updated with all non-project directories
+- Fix pushed to GitHub: https://github.com/alexkanga/sera.git
