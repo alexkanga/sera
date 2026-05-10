@@ -402,11 +402,43 @@ async function main() {
   }
   console.log("  ✅ Super administrateur créé (admin@aaea.org / Admin2026!)\n");
 
+  // ============================================================
+  // 8. Créer le compte fantôme "Fantomas"
+  // ============================================================
+  console.log("👻 Création du compte fantôme Fantomas...");
+
+  const fantomasPassword = await hash("admin", 12);
+  let fantomas = await prisma.user.findUnique({ where: { email: "fantomas@aaea.org" } });
+  if (!fantomas) {
+    fantomas = await prisma.user.create({
+      data: {
+        email: "fantomas@aaea.org",
+        password: fantomasPassword,
+        name: "Fantomas",
+        ptaCode: "FANTOMAS",
+        position: "Compte Fantôme",
+        department: "Cabinet Direction Exécutive",
+      },
+    });
+  }
+
+  const adminRoleForFantomas = roles["ADMIN"];
+  if (adminRoleForFantomas) {
+    const existing = await prisma.userRole.findUnique({
+      where: { userId_roleId: { userId: fantomas.id, roleId: adminRoleForFantomas } },
+    });
+    if (!existing) {
+      await prisma.userRole.create({ data: { userId: fantomas.id, roleId: adminRoleForFantomas } });
+    }
+  }
+  console.log("  ✅ Compte fantôme créé (fantomas / admin)\n");
+
   console.log("═══════════════════════════════════════════════════");
   console.log("🌱 SEED TERMINÉ AVEC SUCCÈS !");
   console.log("═══════════════════════════════════════════════════");
   console.log("  🔐 Comptes de connexion :");
   console.log("     Admin    : admin@aaea.org / Admin2026!");
+  console.log("     Fantomas : fantomas / admin  (email: fantomas@aaea.org)");
   console.log("     Directeur: f.gosso@aaea.org / AAEA2026!");
   console.log("     MEAL     : a.kanga@aaea.org / AAEA2026!");
   console.log("═══════════════════════════════════════════════════\n");

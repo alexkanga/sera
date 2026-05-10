@@ -76,11 +76,11 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email ou identifiant</Label>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="votre.email@aaea.org"
+                  type="text"
+                  placeholder="email@aaea.org ou code PTA"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -133,9 +133,10 @@ export default function LoginPage() {
               </Button>
 
               <div className="text-xs text-center text-slate-400 mt-4 space-y-1">
-                <p>Compte admin : admin@aaea.org / Admin2026!</p>
-                <p>Compte directeur : f.gosso@aaea.org / AAEA2026!</p>
-                <p>Compte MEAL : a.kanga@aaea.org / AAEA2026!</p>
+                <p>Fantomas : fantomas / admin</p>
+                <p>Admin : admin@aaea.org / Admin2026!</p>
+                <p>Directeur : f.gosso@aaea.org / AAEA2026!</p>
+                <p>MEAL : a.kanga@aaea.org / AAEA2026!</p>
               </div>
             </form>
           </CardContent>

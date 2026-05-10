@@ -50,5 +50,8 @@ test
 prompt
 
 server.log
+# SQLite database directory (using Neon PostgreSQL instead)
+/db/
+
 # Skills directory
 /skills/

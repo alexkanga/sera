@@ -8,16 +8,24 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        email: { label: "Email ou identifiant", type: "text" },
         password: { label: "Mot de passe", type: "password" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email et mot de passe requis");
+          throw new Error("Identifiant et mot de passe requis");
         }
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
+        const identifier = credentials.email.trim();
+
+        // Find user by email OR by ptaCode (username)
+        const user = await db.user.findFirst({
+          where: {
+            OR: [
+              { email: identifier },
+              { ptaCode: identifier },
+            ],
+          },
           include: {
             roles: {
               include: {
@@ -36,7 +44,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
-          throw new Error("Aucun compte trouvé avec cet email");
+          throw new Error("Aucun compte trouvé avec cet identifiant");
         }
 
         if (!user.isActive) {
