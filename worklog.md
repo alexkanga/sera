@@ -107,3 +107,44 @@ Stage Summary:
 - OrgOverviewSection: Visual org overview with stats cards, color-coded direction cards, expandable unit lists, member dialogs
 - All components use "use client", shadcn/ui, Zod validation, emerald green theme, French text
 - All components follow existing code patterns from users-section.tsx
+
+---
+Task ID: Module2-Main
+Agent: Main Agent
+Task: Module 2 — Administration organisationnelle AAEA (Complete Development & Deployment)
+
+Work Log:
+- Reviewed all existing project files to understand current state
+- Updated Prisma schema: added `description` field to Unit model (@db.Text, optional)
+- Created API routes for Directions CRUD:
+  - GET /api/directions — list with search, status filter, includeUnits, pagination
+  - POST /api/directions — create with Zod validation, unique code check, headUserId validation
+  - GET /api/directions/[id] — detail with headUser and units
+  - PUT /api/directions/[id] — update with audit logging
+  - PATCH /api/directions/[id] — archive/restore with audit logging
+- Created API routes for Units CRUD:
+  - GET /api/units — list with search, directionId filter, status filter, pagination
+  - POST /api/units — create with direction existence check, unique code check
+  - GET /api/units/[id] — detail with direction and headUser
+  - PUT /api/units/[id] — update with audit logging
+  - PATCH /api/units/[id] — archive/restore with audit logging
+- Updated middleware.ts: added org:read permission for /api/directions and /api/units
+- Updated app-store.ts: added "directions", "units", "org-overview" to AppSection type
+- Updated page.tsx: added Module 2 sidebar group, section rendering, dynamic header badge
+- Built DirectionsSection: full CRUD data table with search, status tabs, create/edit/view/archive dialogs
+- Built UnitsSection: full CRUD data table with direction filter, search, status tabs
+- Built OrgOverviewSection: stats cards, color-coded org chart (DEX=emerald, DSMP=amber, DAF=violet), member dialogs
+- Pushed Prisma schema to Neon PostgreSQL (db:push) ✅
+- Seeded database with all data including Fantomas account (db:seed) ✅
+- Ran lint check: clean ✅
+- Verified API returns 401 for unauthenticated requests to /api/directions ✅
+- Committed and pushed to GitHub: https://github.com/alexkanga/sera.git (main branch) ✅
+
+Stage Summary:
+- Module 2 fully implemented with backend API routes and frontend sections
+- Directions: CRUD with soft delete, audit logging, permission checks (org:read/create/update/archive)
+- Units: CRUD with soft delete, audit logging, permission checks (org:read/create/update/archive)
+- Org Overview: Visual org chart with 4 stats cards, color-coded direction cards, expandable units, member dialogs
+- Database: Neon PostgreSQL in sync, all 3 directions seeded with head users
+- Frontend: 3 new section components, Module 2 sidebar navigation group
+- GitHub: pushed to https://github.com/alexkanga/sera.git
