@@ -21,6 +21,7 @@ const routePermissions: Record<string, string> = {
   "/api/evidence": "evidence:read",
   "/api/raci": "raci:read",
   "/api/gantt": "pta:read",
+  "/api/kpi": "kpi:read",
 };
 
 export async function middleware(request: NextRequest) {

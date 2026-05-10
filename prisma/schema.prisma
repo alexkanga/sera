@@ -150,6 +150,7 @@ model Direction {
   units       Unit[]
   headUser    User?     @relation("DirectionHead", fields: [headUserId], references: [id], onDelete: SetNull)
   activities  Activity[]
+  kpiDefinitions KpiDefinition[]
 
   @@map("directions")
 }
@@ -195,6 +196,7 @@ model StrategicAxis {
   activitiesPrimary   Activity[] @relation("PrimaryAxis")
   activitiesSecondary Activity[] @relation("SecondaryAxis")
   raciMatrices        RaciMatrix[]
+  kpiDefinitions      KpiDefinition[]
 
   @@map("strategic_axes")
 }
@@ -375,6 +377,52 @@ model RaciMatrix {
   createdBy         User?            @relation("RaciCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("raci_matrix")
+}
+
+// ============================================================
+// MODULE 10 — Tableaux de bord et indicateurs de performance
+// ============================================================
+
+model KpiDefinition {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  name            String
+  description     String?   @db.Text
+  category        String    // "Stratégique", "Opérationnel", "Organisationnel", "Qualité"
+  targetValue     Float     @default(0)
+  currentValue    Float     @default(0)
+  unit            String?   // "%", "Nombre", "Jours", "Score"
+  direction       String    @default("higher") // "higher" = plus haut est mieux, "lower" = plus bas est mieux
+  frequency       String    @default("Mensuel") // "Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"
+  strategicAxisId String?
+  directionId     String?
+  isPublic        Boolean   @default(true)
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  strategicAxis   StrategicAxis? @relation(fields: [strategicAxisId], references: [id], onDelete: SetNull)
+  orgDirection    Direction?     @relation(fields: [directionId], references: [id], onDelete: SetNull)
+  snapshots       KpiSnapshot[]
+
+  @@map("kpi_definitions")
+}
+
+model KpiSnapshot {
+  id              String    @id @default(cuid())
+  kpiId           String
+  value           Float
+  targetValue     Float
+  period          String    // "2026-01", "2026-Q1", "2026", etc.
+  capturedAt      DateTime  @default(now())
+  notes           String?   @db.Text
+
+  kpi             KpiDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@unique([kpiId, period])
+  @@map("kpi_snapshots")
 }
 
 // ============================================================

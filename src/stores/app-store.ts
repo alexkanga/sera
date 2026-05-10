@@ -17,6 +17,7 @@ export type AppSection =
   | "evidence"
   | "raci"
   | "gantt"
+  | "performance"
   | "profile"
   | "change-password";
 

@@ -709,3 +709,62 @@ Stage Summary:
 - Middleware permissions updated for raci API route (raci:read)
 - Uses error.issues (NOT error.errors) for Zod v4 compatibility
 - French error messages throughout
+
+---
+Task ID: 10-frontend
+Agent: Module 10 Frontend Agent
+Task: Module 10 — Tableaux de bord et indicateurs de performance (Frontend Section Component)
+
+Work Log:
+- Read worklog.md for project context and patterns ✅
+- Read dashboard-section.tsx for recharts chart patterns ✅
+- Read pta-consolide-section.tsx for KPI cards + filter bar pattern ✅
+- Read chart.tsx for ChartContainer, ChartConfig usage ✅
+- Read app-store.ts for AppSection type ✅
+- Read page.tsx for sidebar integration patterns ✅
+- Read prisma/schema.prisma to confirm KpiDefinition and KpiSnapshot models ✅
+- Created `src/components/sections/performance-section.tsx` (~900 lines) ✅
+  - Two main tabs: "Tableau de bord" (Dashboard) and "Indicateurs KPI" (KPI Management)
+  - Tab 1 — Dashboard:
+    - 6 top KPI cards: Total activités (with trend arrow), Avancement moyen (with progress bar), Taux validation, En retard (red), Taux RACI, Preuves vérifiées
+    - 4 charts in 2x2 grid:
+      - Répartition par statut — Donut/Pie chart (8 statuses with colors)
+      - Avancement par direction — Horizontal bar chart (progress % per direction)
+      - Tendance mensuelle — Line chart (average progress over months)
+      - Pipeline de validation — Stacked bar chart (Brouillon/Soumis/Validé/Rejeté by direction)
+    - 2 detailed stats columns: Par axe stratégique (with progress bars), Par domaine ACBF (with activity counts)
+    - Export buttons (CSV/JSON)
+  - Tab 2 — KPI Management:
+    - Filter bar: search, category dropdown, strategic axis dropdown, direction dropdown, status tabs (Actifs/Archivés/Tous)
+    - KPI cards grid (responsive 1/2/3 cols): each card shows code, name, category badge, current vs target with progress, trend arrow, frequency
+    - Color coding: Green (≥90% target), Amber (≥70%), Red (<70%)
+    - Click card to view KPI detail dialog
+    - Create KPI dialog with Zod-style validation (code, name, description, category, targetValue, currentValue, unit, direction, frequency, strategicAxisId, directionId)
+    - Edit KPI dialog (pre-filled from selected KPI)
+    - View KPI dialog (all fields read-only + snapshot history table + mini line chart showing snapshot trend)
+    - Capture Snapshot dialog (period, value, notes)
+    - Archive/Restore with AlertDialog confirmation
+  - Permission checks: kpi:read for viewing, kpi:write for management
+  - French text throughout, emerald green theme
+  - Loading skeletons, error handling, empty states
+  - API calls: GET /api/kpi/dashboard, GET /api/kpi, POST /api/kpi, PUT /api/kpi/[id], PATCH /api/kpi/[id]
+- Updated `src/stores/app-store.ts`: Added "performance" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added import: Gauge icon, PerformanceSection component
+  - Added `perfItems` navigation array for Module 10
+  - Added SectionContent switch case for "performance"
+  - Added SidebarGroup "Module 10 — Performance" after Module 9 group
+  - Updated `getSectionTitle` to include perfItems in search
+  - Updated header badge: shows "Module 10" for performance section
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1, 2, 3, 4, 5, 6, 7, 8, 9 & 10"
+- Middleware already had "/api/kpi": "kpi:read" permission ✅
+- Ran lint check: all clean ✅
+
+Stage Summary:
+- Module 10 frontend section fully implemented for Performance & KPI
+- Performance dashboard with 6 KPI cards, 4 recharts (Pie, Bar, Line, Stacked Bar), detailed stats, and export
+- KPI management with CRUD, snapshot capture, archive/restore, and filter bar
+- All components use "use client", shadcn/ui, recharts, emerald green theme, French text
+- Module 10 sidebar group added between Module 9 and Account groups
+- Dynamic module badge shows "Module 10" for performance section
+- Footer updated to reflect all ten modules
