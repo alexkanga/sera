@@ -53,5 +53,14 @@ server.log
 # SQLite database directory (using Neon PostgreSQL instead)
 /db/
 
-# Skills directory
+# Skills directory (not part of the app)
 /skills/
+
+# Examples directory (not part of the app)
+/examples/
+
+# Agent context directory (not part of the app)
+/agent-ctx/
+
+# Mini-services directory (not part of the app)
+/mini-services/
