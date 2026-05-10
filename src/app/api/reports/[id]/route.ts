@@ -107,6 +107,7 @@ export async function GET(
 // ============================================================
 
 const updateTemplateSchema = z.object({
+  code: z.string().min(1, "Le code est requis").optional(),
   name: z.string().min(1, "Le nom est requis").optional(),
   description: z.string().optional().nullable(),
   type: z
@@ -176,6 +177,7 @@ export async function PUT(
 
     // Build update data
     const updateData: Record<string, unknown> = {};
+    if (validated.code !== undefined) updateData.code = validated.code;
     if (validated.name !== undefined) updateData.name = validated.name;
     if (validated.description !== undefined)
       updateData.description = validated.description;
@@ -243,7 +245,7 @@ const generateReportSchema = z.object({
 });
 
 const actionSchema = z.object({
-  action: z.enum(["validate", "reject", "archive", "restore"]),
+  action: z.enum(["validate", "reject", "archive", "restore", "template-archive", "template-restore"]),
 });
 
 export async function PATCH(
@@ -629,6 +631,104 @@ export async function PATCH(
     }
 
     // ============================================================
+    // TEMPLATE-ARCHIVE — Soft delete a template
+    // ============================================================
+    if (action === "template-archive") {
+      actionSchema.parse(body);
+      const hasAccess = userHasPermission(currentUser, "reports:create");
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+      }
+
+      const existingTemplate = await db.reportTemplate.findUnique({
+        where: { id },
+      });
+      if (!existingTemplate) {
+        return NextResponse.json(
+          { error: "Modèle de rapport non trouvé" },
+          { status: 404 }
+        );
+      }
+      if (existingTemplate.deletedAt) {
+        return NextResponse.json(
+          { error: "Ce modèle est déjà archivé" },
+          { status: 400 }
+        );
+      }
+
+      const updatedTemplate = await db.reportTemplate.update({
+        where: { id },
+        data: { deletedAt: new Date(), isActive: false },
+      });
+
+      await db.auditLog.create({
+        data: {
+          userId: currentUser.id,
+          action: "ARCHIVE",
+          entity: "ReportTemplate",
+          entityId: id,
+          oldValue: JSON.stringify({ isActive: true, deletedAt: null }),
+          newValue: JSON.stringify({
+            isActive: false,
+            deletedAt: updatedTemplate.deletedAt,
+          }),
+          details: `Archive du modèle de rapport ${existingTemplate.name}`,
+        },
+      });
+
+      return NextResponse.json({ data: { id, archived: true } });
+    }
+
+    // ============================================================
+    // TEMPLATE-RESTORE — Unarchive a template
+    // ============================================================
+    if (action === "template-restore") {
+      actionSchema.parse(body);
+      const hasAccess = userHasPermission(currentUser, "reports:create");
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+      }
+
+      const existingTemplate = await db.reportTemplate.findUnique({
+        where: { id },
+      });
+      if (!existingTemplate) {
+        return NextResponse.json(
+          { error: "Modèle de rapport non trouvé" },
+          { status: 404 }
+        );
+      }
+      if (!existingTemplate.deletedAt) {
+        return NextResponse.json(
+          { error: "Ce modèle n'est pas archivé" },
+          { status: 400 }
+        );
+      }
+
+      const updatedTemplate = await db.reportTemplate.update({
+        where: { id },
+        data: { deletedAt: null, isActive: true },
+      });
+
+      await db.auditLog.create({
+        data: {
+          userId: currentUser.id,
+          action: "RESTORE",
+          entity: "ReportTemplate",
+          entityId: id,
+          oldValue: JSON.stringify({
+            isActive: false,
+            deletedAt: existingTemplate.deletedAt,
+          }),
+          newValue: JSON.stringify({ isActive: true, deletedAt: null }),
+          details: `Restauration du modèle de rapport ${existingTemplate.name}`,
+        },
+      });
+
+      return NextResponse.json({ data: { id, restored: true } });
+    }
+
+    // ============================================================
     // For all other actions, find the report first
     // ============================================================
     const existingReport = await db.report.findUnique({
@@ -818,7 +918,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         error:
-          "Action invalide. Utilisez 'generate', 'validate', 'reject', 'archive' ou 'restore'",
+          "Action invalide. Utilisez 'generate', 'validate', 'reject', 'archive', 'restore', 'template-archive' ou 'template-restore'",
       },
       { status: 400 }
     );

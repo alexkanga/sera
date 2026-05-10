@@ -116,6 +116,7 @@ interface ReportTemplate {
   updatedAt: string;
   createdBy?: { name: string; email: string } | null;
   _count?: { reports: number };
+  reportsCount?: number;
 }
 
 interface Report {
@@ -705,7 +706,7 @@ export function ReportsSection() {
     setTemplatesError(null);
     try {
       const params = new URLSearchParams();
-      params.set("mode", "templates");
+      params.set("tab", "templates");
       if (templateSearch) params.set("search", templateSearch);
       if (templateTypeFilter) params.set("type", templateTypeFilter);
       if (templateCategoryFilter)
@@ -739,7 +740,7 @@ export function ReportsSection() {
     setReportsError(null);
     try {
       const params = new URLSearchParams();
-      params.set("mode", "reports");
+      params.set("tab", "reports");
       if (reportSearch) params.set("search", reportSearch);
       if (reportStatusFilter && reportStatusFilter !== "Tous")
         params.set("status", reportStatusFilter);
@@ -919,7 +920,6 @@ export function ReportsSection() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "template",
           code: formCode.trim(),
           name: formName.trim(),
           description: formDescription.trim() || null,
@@ -958,7 +958,6 @@ export function ReportsSection() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "template",
           code: formCode.trim(),
           name: formName.trim(),
           description: formDescription.trim() || null,
@@ -993,12 +992,11 @@ export function ReportsSection() {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
+      const res = await fetch(`/api/reports/${selectedTemplate.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "report",
-          templateId: selectedTemplate.id,
+          action: "generate",
           period: genPeriod.trim(),
           directionId: genDirectionId || null,
           strategicAxisId: genStrategicAxisId || null,
@@ -1027,12 +1025,14 @@ export function ReportsSection() {
     setSaving(true);
     try {
       const action = archiveTarget.isActive ? "archive" : "restore";
+      const patchAction = archiveTarget.type === "template"
+        ? `template-${action}`
+        : action;
       const res = await fetch(`/api/reports/${archiveTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action,
-          mode: archiveTarget.type,
+          action: patchAction,
         }),
       });
       if (!res.ok) {
@@ -1063,7 +1063,7 @@ export function ReportsSection() {
       const res = await fetch(`/api/reports/${reportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, mode: "report" }),
+        body: JSON.stringify({ action }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -1482,7 +1482,7 @@ export function ReportsSection() {
                                   variant="secondary"
                                   className="text-[10px]"
                                 >
-                                  {t._count?.reports ?? 0}
+                                  {t.reportsCount ?? t._count?.reports ?? 0}
                                 </Badge>
                               </td>
                               <td className="p-3 text-center">
