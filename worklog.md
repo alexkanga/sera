@@ -389,43 +389,29 @@ Stage Summary:
 
 ---
 Task ID: 5-frontend
-Agent: Module 5 Frontend Agent
-Task: Module 5 — Gestion des PTA individuels (Activities Frontend Section)
+Agent: Module 5 Frontend Agent (via full-stack-developer subagent)
+Task: Module 5 — Gestion des PTA individuels (Activities Frontend Section + Integration)
 
 Work Log:
-- Read worklog.md for project context and acbf-deliverables-section.tsx for code patterns ✅
-- Read activities API routes to understand all endpoints and parameters ✅
-- Created `src/components/sections/activities-section.tsx` ✅
-  - Full CRUD + workflow management for PTA Activities (275 seeded from Excel)
-  - Data table with 9 columns: Code (mono badge), Titre, Responsable, Direction, Priorité (colored badges), Statut (colored badges), Avancement (progress bar with %), Validation (colored badges), Actions
-  - Filter bar with: search (title/code), direction dropdown, priority dropdown, validation status tabs (Tous/Brouillon/Soumis/Validé/Rejeté), activity status tabs (Tous/Non démarré/En cours/Terminé), status tabs (Actifs/Archivés/Tous), reset filters button
-  - Create dialog with organized form sections: Identification, Organisation, Planification, Suivi, Risques et commentaires
-  - View dialog with all fields read-only, organized in same sections with relation names displayed
-  - Edit dialog same as create but pre-filled, respects isLocked guard
-  - Archive/Restore AlertDialog confirmation
-  - Submit for validation AlertDialog (only if validationStatus is Brouillon or Rejeté)
-  - Validate/Reject AlertDialogs (only if validationStatus is Soumis)
-  - ACBF deliverable dropdown filters by selected domain
-  - Progress rate input (0-100) with visual progress bar preview
-  - Pagination with page number buttons
-  - Permission checks: pta:read, pta:create, pta:update, pta:archive, pta:submit, pta:validate
-  - Emerald green color theme, French text, Zod validation, loading/error/empty states
-- Updated `src/stores/app-store.ts`: Added "activities" to AppSection type union ✅
-- Updated `src/app/page.tsx` ✅
-  - Added import: ClipboardList icon from lucide-react, ActivitiesSection component
-  - Added `ptaItems` navigation array for Module 5 (activities)
-  - Added SectionContent switch case for "activities"
-  - Added SidebarGroup "Module 5 — PTA" after Module 4 group
-  - Updated `getSectionTitle` to include ptaItems in search
-  - Updated header badge: shows "Module 5" for activities, "Module 4" for ACBF, etc.
-  - Updated footer text to "AAEA Pilotage 360 — Modules 1, 2, 3, 4 & 5"
-- Ran lint check: all clean ✅
-- Dev server running without errors ✅
+- Created `src/components/sections/activities-section.tsx` (~1200 lines)
+  - Data table: 9 columns (Code, Titre, Responsable, Direction, Priorité, Statut, Avancement, Validation, Actions)
+  - Rich filter bar: search, direction, priority, validation status tabs, activity status tabs, archival status
+  - Create dialog with 5 sections: Identification, Organisation, Planification, Suivi, Risques
+  - View dialog with all fields read-only + relation names
+  - Edit dialog with isLocked guard
+  - Archive/Restore AlertDialog
+  - Submit/Validate/Reject workflow dialogs with permission checks
+  - ACBF deliverable dropdown auto-filters when domain changes
+  - Progress rate with visual progress bar preview
+  - Permissions: pta:read, pta:create, pta:update, pta:archive, pta:submit, pta:validate, admin:*
+- Updated `src/stores/app-store.ts`: Added "activities" to AppSection type
+- Updated `src/app/page.tsx`: Module 5 sidebar group, section rendering, header badge, footer
+- Lint: clean ✅ | Dev server: running ✅
+- Pushed to GitHub ✅
 
 Stage Summary:
-- Module 5 frontend section fully implemented
-- ActivitiesSection: Full CRUD data table with extensive filters, create/edit/view dialogs with organized sections, archive/restore, submit/validate/reject workflow dialogs
-- All components use "use client", shadcn/ui, Zod validation, emerald green theme, French text
-- All components follow existing code patterns from acbf-deliverables-section.tsx
-- Dynamic module badge in header (Module 1 through Module 5)
-- Footer updated to reflect all five modules
+- Module 5 now COMPLETE (API + Frontend + Prisma + Sidebar)
+- Activities section is the most comprehensive component in the app
+- Full CRUD + validation workflow (Brouillon → Soumis → Validé/Rejeté)
+- 275 activities already seeded from Excel file
+- Module badge shows "Module 5" for activities section
