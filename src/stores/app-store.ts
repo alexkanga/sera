@@ -18,6 +18,7 @@ export type AppSection =
   | "raci"
   | "gantt"
   | "performance"
+  | "reports"
   | "profile"
   | "change-password";
 

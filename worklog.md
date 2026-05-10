@@ -768,3 +768,49 @@ Stage Summary:
 - Module 10 sidebar group added between Module 9 and Account groups
 - Dynamic module badge shows "Module 10" for performance section
 - Footer updated to reflect all ten modules
+
+---
+Task ID: 11-2-api
+Agent: Module 11 API Agent
+Task: Module 11 — Reporting automatique (API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm ReportTemplate and Report models ✅
+- Read existing API routes for code patterns (kpi/route.ts, evidence/[id]/route.ts, kpi/dashboard/route.ts) ✅
+- Created `src/app/api/reports/route.ts` ✅
+  - GET /api/reports?tab=templates — List report templates with search, type, category filters, pagination, reports count
+  - GET /api/reports?tab=reports — List generated reports with search, type, status, directionId, strategicAxisId, period filters, pagination
+  - POST /api/reports — Create a new report template with Zod validation, unique code check, audit logging
+  - Permission: reports:read (GET), reports:create (POST)
+- Created `src/app/api/reports/[id]/route.ts` ✅
+  - GET /api/reports/[id] — Get template or report detail by ID (tries both, returns with kind indicator)
+  - PUT /api/reports/[id] — Update a report template (cannot update system templates or archived ones), audit logging
+  - PATCH /api/reports/[id] — Action-based operations:
+    - "generate": Generate a report from a template with parallel aggregation queries
+      - Aggregates: activities by status/priority/direction/axis, avg progress, overdue count, evidence total/verified, RACI coverage, KPI avg achievement
+      - Creates Report record with status="Généré", generatedAt=now, generatedById=currentUser
+      - Audit log: GENERATE action
+    - "validate": Set status="Validé" (only from "Généré"), set validatedAt/validatedById, audit log
+    - "reject": Set status="Rejeté" (only from "Généré"), audit log
+    - "archive": Soft delete (deletedAt=now, isActive=false), audit log
+    - "restore": Unarchive (deletedAt=null, isActive=true), audit log
+  - Permission: reports:read (GET), reports:create/reports:write (PUT), reports:create (generate/archive/restore), reports:validate (validate/reject)
+- Created `src/app/api/reports/stats/route.ts` ✅
+  - GET /api/reports/stats — KPIs for reports section
+  - Total templates (active), Total reports generated, Reports by status, Reports by type, Last generated report
+  - Parallel queries for performance
+  - Permission: reports:read
+- Updated `src/middleware.ts`: Added "/api/reports": "reports:read" to routePermissions ✅
+- Lint check: all clean ✅
+- TypeScript check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 11 API routes fully implemented with 3 route files
+- Reports list/create API: tab-based listing (templates vs reports), rich filtering, Zod validation, audit logging
+- Reports detail/update/actions API: template update, report generation with parallel aggregation, validation workflow, soft delete
+- Report generation aggregates 12 data points from activities, evidence, RACI, and KPIs using Promise.all
+- Reports stats API: 5 KPIs with parallel queries
+- All routes follow same patterns as existing API routes (auth, permissions, Zod v4 error.issues, French errors, audit logging)
+- Middleware permissions updated for /api/reports (reports:read)

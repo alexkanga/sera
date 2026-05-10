@@ -46,6 +46,10 @@ model User {
   raciAccountable   RaciMatrix[]   @relation("RaciAccountable")
   raciCreated       RaciMatrix[]   @relation("RaciCreator")
 
+  reportTemplatesCreated ReportTemplate[] @relation("TemplateCreator")
+  reportsGenerated       Report[]         @relation("ReportGenerator")
+  reportsValidated       Report[]         @relation("ReportValidator")
+
   @@map("users")
 }
 
@@ -151,6 +155,7 @@ model Direction {
   headUser    User?     @relation("DirectionHead", fields: [headUserId], references: [id], onDelete: SetNull)
   activities  Activity[]
   kpiDefinitions KpiDefinition[]
+  reports     Report[]
 
   @@map("directions")
 }
@@ -197,6 +202,7 @@ model StrategicAxis {
   activitiesSecondary Activity[] @relation("SecondaryAxis")
   raciMatrices        RaciMatrix[]
   kpiDefinitions      KpiDefinition[]
+  reports             Report[]
 
   @@map("strategic_axes")
 }
@@ -218,6 +224,7 @@ model AcbfDomain {
 
   deliverables      AcbfDeliverable[]
   activities        Activity[]
+  reports           Report[]
 
   @@map("acbf_domains")
 }
@@ -423,6 +430,70 @@ model KpiSnapshot {
 
   @@unique([kpiId, period])
   @@map("kpi_snapshots")
+}
+
+// ============================================================
+// MODULE 11 — Reporting automatique
+// ============================================================
+
+model ReportTemplate {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  name            String
+  description     String?   @db.Text
+  type            String    // "Mensuel", "Trimestriel", "Annuel", "ACBF", "Par axe", "Par direction", "Personnalisé"
+  category        String    @default("Général") // "Général", "Stratégique", "Opérationnel", "ACBF", "Finance"
+  periodFormat    String    @default("YYYY-MM") // "YYYY-MM", "YYYY-QN", "YYYY", "custom"
+  sections        String?   @db.Text // JSON string defining report sections/structure
+  filters         String?   @db.Text // JSON string with default filters (directionId, axisId, etc.)
+  isSystem        Boolean   @default(false) // System templates can't be deleted
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+
+  createdById     String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdBy       User?     @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  reports         Report[]
+
+  @@map("report_templates")
+}
+
+model Report {
+  id              String    @id @default(cuid())
+  templateId      String
+  title           String
+  period          String    // "2026-01", "2026-Q1", "2026", etc.
+  status          String    @default("Brouillon") // "Brouillon", "Généré", "Validé", "Rejeté", "Archivé"
+  type            String    // Inherited from template
+  data            String?   @db.Text // JSON string with aggregated report data
+  summary         String?   @db.Text // Executive summary text
+  generatedAt     DateTime?
+  validatedAt     DateTime?
+  validatedById   String?
+  generatedById   String?
+
+  // Filters used for generation
+  directionId     String?
+  strategicAxisId String?
+  acbfDomainId    String?
+
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  template        ReportTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  validatedBy     User?          @relation("ReportValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+  generatedBy     User?          @relation("ReportGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+  direction       Direction?     @relation(fields: [directionId], references: [id], onDelete: SetNull)
+  strategicAxis   StrategicAxis? @relation(fields: [strategicAxisId], references: [id], onDelete: SetNull)
+  acbfDomain      AcbfDomain?    @relation(fields: [acbfDomainId], references: [id], onDelete: SetNull)
+
+  @@map("reports")
 }
 
 // ============================================================
