@@ -814,3 +814,32 @@ Stage Summary:
 - Reports stats API: 5 KPIs with parallel queries
 - All routes follow same patterns as existing API routes (auth, permissions, Zod v4 error.issues, French errors, audit logging)
 - Middleware permissions updated for /api/reports (reports:read)
+
+---
+Task ID: Module11-Fix
+Agent: Main Agent
+Task: Fix "Erreur de chargement" on Reporting automatique page (all 3 tabs)
+
+Work Log:
+- Diagnosed root cause: frontend-backend API parameter mismatches
+- Issue 1: Frontend sends `mode=templates/reports` but API expects `tab=templates/reports` — caused reports tab to always return template data (or fail)
+- Issue 2: Report generation used POST /api/reports with `mode: "report"` but POST handler only creates templates — should use PATCH /api/reports/${templateId} with `action: "generate"`
+- Issue 3: Template archiving used PATCH with `action: "archive"` but handler only finds Reports, not ReportTemplates — returns 404
+- Issue 4: `reportsCount` vs `_count.reports` field name mismatch between API response and frontend interface
+- Issue 5: `updateTemplateSchema` missing `code` field (frontend sends it during template editing)
+- Applied all fixes:
+  - Changed `params.set("mode", "templates")` → `params.set("tab", "templates")`
+  - Changed `params.set("mode", "reports")` → `params.set("tab", "reports")`
+  - Changed report generation from POST to PATCH with action: "generate"
+  - Added template-archive/template-restore actions to PATCH handler
+  - Fixed reportsCount field reference in frontend
+  - Added code field to updateTemplateSchema
+  - Removed mode field from all request bodies
+- Lint check: clean ✅
+- Pushed to GitHub ✅
+
+Stage Summary:
+- 5 frontend-backend mismatches fixed in Module 11
+- All 3 tabs (Modèles, Rapports générés, Statistiques) should now load correctly on Vercel
+- Report generation workflow now properly routes through PATCH handler with aggregation logic
+- Template archiving/restoring now supported via template-archive/template-restore actions
