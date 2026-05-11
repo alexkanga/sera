@@ -53,6 +53,7 @@ model User {
   notificationsReceived  Notification[]   @relation("NotificationRecipient")
   notificationsSent      Notification[]   @relation("NotificationSender")
   notificationPreferences NotificationPreference? @relation("NotificationPreferences")
+  importsUploaded        ImportHistory[]  @relation("ImportUploader")
 
   @@map("users")
 }
@@ -564,6 +565,43 @@ model NotificationPreference {
   user                  User     @relation("NotificationPreferences", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
+}
+
+// ============================================================
+// MODULE 14 — Import Excel
+// ============================================================
+
+model ImportHistory {
+  id              String    @id @default(cuid())
+  fileName        String
+  fileSize        Int
+  fileType        String    // "xlsx", "xls", "csv"
+  status          String    @default("En attente") // "En attente", "En cours", "Terminé", "Erreur", "Partiel"
+  sheets          String?   @db.Text // JSON array of sheet names found
+  selectedSheets  String?   @db.Text // JSON array of selected sheets for import
+  mapping         String?   @db.Text // JSON object with column mapping config
+  totalRows       Int       @default(0)
+  processedRows   Int       @default(0)
+  createdRows     Int       @default(0)
+  updatedRows     Int       @default(0)
+  skippedRows     Int       @default(0)
+  errorRows       Int       @default(0)
+  errors          String?   @db.Text // JSON array of error objects [{row, column, message}]
+  previewData     String?   @db.Text // JSON with first 5 rows preview per sheet
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  uploadedById    String
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  uploadedBy      User      @relation("ImportUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([uploadedById])
+  @@index([createdAt])
+  @@map("import_history")
 }
 
 // ============================================================

@@ -1161,3 +1161,139 @@ Stage Summary:
 - Module 13 sidebar group added between Module 12 and Account groups
 - Header badge shows "Module 13" for audit-advanced section
 - Footer updated to "AAEA Pilotage 360 — Modules 1 à 13"
+
+---
+Task ID: 14-frontend
+Agent: Module 14 Frontend Agent
+Task: Module 14 — Import Excel (Frontend Section Component + Integration)
+
+Work Log:
+- Read worklog.md for project context and existing section patterns ✅
+- Read Prisma schema to confirm ImportHistory model fields ✅
+- Read evidence-section.tsx and page.tsx for code patterns ✅
+- Created `src/components/sections/import-section.tsx` (~650 lines) ✅
+  - KPI Stats Cards (4 cards): Total imports, Imports réussis, Lignes créées, Erreurs d'import (red if >0)
+  - Data from: GET /api/imports/stats
+  - Upload Zone: drag & drop with dashed border, icon, instruction text, accepts .xlsx/.xls/.csv
+  - On file drop/select: POST /api/imports with FormData, shows indeterminate spinner during upload
+  - After upload: shows parse results (sheets found, row counts, preview)
+  - Preview & Sheet Selection Panel: checkboxes for each sheet, toggle all, sheet tabs, scrollable preview table (first 5 rows)
+  - Execute Import Button: enabled when at least 1 sheet selected, PATCH /api/imports/{id} with action="execute"
+  - After completion: shows results grid (created, updated, skipped, errors) with color-coded cards
+  - Expandable error log table (Collapsible) if errors exist
+  - Import History Table: Date, Fichier, Taille, Feuilles, Statut, Lignes créées, Lignes ignorées, Erreurs, Actions
+  - Status badges: En attente (slate), En cours (amber spinner), Terminé (emerald), Partiel (amber), Erreur (red)
+  - Actions: View details dialog
+  - Status filter dropdown, pagination with page number buttons
+  - Data from: GET /api/imports?status=&page=1&limit=20
+  - Import Detail Dialog: file info, sheets, timing, row counts, error table, preview data
+  - Download Template Button: GET /api/imports/template, downloads as "template_import_AAEA.xlsx"
+  - Permission check: import:execute from session.user.roles
+  - "Accès refusé" card if no permission
+  - Emerald green theme, French text, loading skeletons, error/empty states
+  - useCallback/useMemo for performance
+  - formatFileSize helper (o/Ko/Mo), date-fns/format with French locale
+- Updated `src/stores/app-store.ts`: Added "imports" to AppSection type union ✅
+- Updated `src/app/page.tsx` ✅
+  - Added import: Upload as UploadIcon from lucide-react, ImportSection component
+  - Added `importItems` navigation array for Module 14: { section: "imports", label: "Import Excel", icon: UploadIcon }
+  - Added SectionContent switch case for "imports"
+  - Added SidebarGroup "Module 14 — Import" after Module 13 group
+  - Updated `getSectionTitle` to include importItems in search
+  - Updated header badge: shows "Module 14" for imports section (before Module 13 check)
+  - Updated footer text to "AAEA Pilotage 360 — Modules 1 à 14"
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 14 frontend section fully implemented for Excel Import
+- ImportSection: comprehensive import interface with upload, preview, execute, history, and detail views
+- 4 KPI stats cards with real-time data from /api/imports/stats
+- Drag & drop upload zone with file type validation
+- Sheet selection with preview table and tab switching
+- Execute import with progress indicator and results display
+- Import history table with status filter and pagination
+- Detail dialog with full import info, error log, and preview data
+- Download template button in header area
+- Permission check: import:execute (with "Accès refusé" fallback)
+- All components use "use client", shadcn/ui, emerald green theme, French text
+- Dynamic module badge in header (Module 14 for imports)
+- Footer updated to reflect all 14 modules
+
+---
+Task ID: 14-api
+Agent: Module 14 API Agent
+Task: Module 14 — Import Excel (API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm ImportHistory model and all relationships ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission pattern ✅
+- Read prisma/seed.ts for mapping logic reference ✅
+- Read existing /api/activities/route.ts and /api/evidence/route.ts for code patterns ✅
+- Created `src/app/api/imports/route.ts` ✅
+  - GET /api/imports — list with status filter, page/limit pagination (default 20)
+  - Include uploadedBy (name, email), order by createdAt desc
+  - POST /api/imports — upload and parse Excel file
+  - Accept multipart/form-data with file field
+  - Validate file type (xlsx, xls, csv)
+  - Save to /upload/imports/ with Date.now() prefix
+  - Parse with xlsx: extract all sheet names, first 5 rows preview per sheet, total rows per sheet
+  - Create ImportHistory record with status "En attente", sheets, previewData, totalRows
+  - Audit log: action="IMPORT", entity="ImportHistory"
+  - Permission: import:execute or admin:*
+- Created `src/app/api/imports/[id]/route.ts` ✅
+  - GET /api/imports/[id] — detail with uploadedBy info, all fields (previewData, errors, sheets, mapping)
+  - PATCH /api/imports/[id] — execute import (action-based)
+  - Body: { action: "execute", selectedSheets: string[], mapping?: Record<string, string> }
+  - Zod v4 validation (error.issues)
+  - Set status to "En cours", startedAt to now
+  - Process selected sheets with mapping logic adapted from seed.ts:
+    - "Equipe AAEA" → Import users (email/ptaCode dedup, role mapping, direction creation, default password "AAEA2026!")
+    - "Axes strategiques" → Import strategic axes (code dedup, mapAxeCode helper)
+    - "Referentiel ACBF" → Import ACBF domains + deliverables (two-pass: domains first, then deliverables)
+    - "PTA consolide AAEA" → Import activities (activityCode dedup, FK lookups, bloc/objectif prepend, comments aggregation)
+    - "RACI institutionnelle" → Import RACI entries (acbfDeliverableId dedup, responsible/accountable user matching)
+    - Unknown sheets → skip with warning
+  - Per-row try/catch: collect errors, track createdRows/skippedRows/errorRows
+  - Final status: "Terminé" (no errors), "Partiel" (some errors), "Erreur" (all errors)
+  - Set completedAt, processedRows, createdRows, updatedRows, skippedRows, errorRows, errors
+  - Audit log on completion
+  - Helper functions: removeAccents, generateEmail, mapRole, mapDirectionCode, mapAcbfDomainCode, mapAxeCode, parseProgressRate, parseExcelDate, findUserByValidatorName, getDirectionIdFromPtaCode
+- Created `src/app/api/imports/stats/route.ts` ✅
+  - GET /api/imports/stats — Import statistics
+  - totalImports, completedImports, partialImports, errorImports
+  - totalRowsImported (sum createdRows), totalRowsSkipped (sum skippedRows), totalRowsErrors (sum errorRows)
+  - recentImports: last 5 with uploadedBy info
+  - importsByMonth: grouped by month (last 12 months) via raw SQL
+  - Permission: import:execute or admin:*
+- Created `src/app/api/imports/template/route.ts` ✅
+  - GET /api/imports/template — Download blank Excel template
+  - 5 sheets with expected column headers:
+    - "Equipe AAEA": 4 columns (Code PTA, Nom et prénoms, Poste, Direction / unité)
+    - "Axes strategiques": 6 columns
+    - "Referentiel ACBF": 7 columns
+    - "PTA consolide AAEA": 25 columns
+    - "RACI institutionnelle": 10 columns
+  - Auto-sized column widths based on header length
+  - Content-Disposition: attachment; filename="template_import_AAEA.xlsx"
+  - Permission: import:execute or admin:*
+- Updated `src/middleware.ts`: Added "/api/imports": "import:execute" to routePermissions ✅
+- Created /upload/imports/ directory ✅
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 14 API routes fully implemented for Excel Import functionality
+- 4 API route files created:
+  - /api/imports (GET list + POST upload/parse)
+  - /api/imports/[id] (GET detail + PATCH execute)
+  - /api/imports/stats (GET statistics)
+  - /api/imports/template (GET download template)
+- Upload endpoint: multipart/form-data, xlsx/xls/csv validation, preview extraction
+- Execute endpoint: full import pipeline for 5 sheet types with per-row error handling
+- Mapping logic adapted from prisma/seed.ts with all helper functions
+- Statistics: 7 aggregate metrics + recent imports + monthly breakdown
+- Template: blank .xlsx with 5 sheets and correct column headers
+- All routes use getCurrentUser/userHasPermission, Zod v4 (error.issues), French error messages
+- Middleware updated with import:execute permission
