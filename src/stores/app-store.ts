@@ -20,6 +20,7 @@ export type AppSection =
   | "performance"
   | "reports"
   | "notifications"
+  | "audit-advanced"
   | "profile"
   | "change-password";
 

@@ -19,21 +19,35 @@ export async function GET(request: NextRequest) {
     const entity = searchParams.get("entity") || "";
     const action = searchParams.get("action") || "";
     const userId = searchParams.get("userId") || "";
+    const entityId = searchParams.get("entityId") || "";
+    const severity = searchParams.get("severity") || "";
+    const search = searchParams.get("search") || "";
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const limit = parseInt(searchParams.get("limit") || "25");
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
     if (entity) where.entity = entity;
     if (action) where.action = action;
     if (userId) where.userId = userId;
+    if (entityId) where.entityId = entityId;
+    if (severity) where.severity = severity;
     if (startDate || endDate) {
       const dateFilter: Record<string, unknown> = {};
       if (startDate) dateFilter.gte = new Date(startDate);
       if (endDate) dateFilter.lte = new Date(endDate);
       where.createdAt = dateFilter;
+    }
+    if (search) {
+      where.OR = [
+        { action: { contains: search, mode: "insensitive" } },
+        { entity: { contains: search, mode: "insensitive" } },
+        { details: { contains: search, mode: "insensitive" } },
+        { user: { name: { contains: search, mode: "insensitive" } } },
+        { user: { email: { contains: search, mode: "insensitive" } } },
+      ];
     }
 
     const [logs, total] = await Promise.all([

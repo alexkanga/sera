@@ -131,11 +131,17 @@ model AuditLog {
   ipAddress  String?
   userAgent  String?
   details    String?  @db.Text
+  severity   String   @default("info") // "info", "warning", "critical"
 
   createdAt  DateTime @default(now())
 
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([severity])
   @@map("audit_logs")
 }
 

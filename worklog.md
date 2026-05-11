@@ -1010,3 +1010,127 @@ Stage Summary:
 - Neon PostgreSQL: schema synced
 - All permissions: notifications:read, notifications:*
 - Middleware: /api/notifications → notifications:read
+
+---
+Task ID: 13-api
+Agent: Module 13 API Agent
+Task: Module 13 — Journal d'audit avancé (API Routes)
+
+Work Log:
+- Read worklog.md for project context and existing API patterns ✅
+- Read Prisma schema to confirm AuditLog model (id, userId, action, entity, entityId, oldValue, newValue, ipAddress, userAgent, details, severity, createdAt) ✅
+- Read permissions.ts to understand getCurrentUser/userHasPermission/userHasAnyPermission patterns ✅
+- Read existing /api/audit-logs/route.ts (GET only with entity, action, userId, startDate, endDate, page, limit filters) ✅
+- Read /api/pta-consolide/export/route.ts for CSV/JSON export pattern ✅
+- Read /api/evidence/stats/route.ts and /api/pta-consolide/stats/route.ts for stats pattern ✅
+- Created `/home/z/my-project/src/app/api/audit-logs/stats/route.ts` ✅
+  - GET /api/audit-logs/stats — comprehensive audit statistics
+  - Parallel DB queries for performance (12 queries in Promise.all)
+  - Returns: total, today, thisWeek, thisMonth, criticalCount, warningCount
+  - byAction: top 15 actions by count (groupBy)
+  - byEntity: top 15 entities by count (groupBy)
+  - byUser: top 10 most active users with name enrichment (groupBy + user lookup)
+  - bySeverity: array of { severity, _count } (groupBy)
+  - recentCritical: last 5 critical logs with user info (findMany)
+  - dailyActivity: last 30 days of activity with zero-fill for missing dates
+  - Permission: audit:read
+  - French error messages
+- Created `/home/z/my-project/src/app/api/audit-logs/export/route.ts` ✅
+  - GET /api/audit-logs/export — export audit logs in CSV or JSON format
+  - Query params: format (csv|json), entity, action, userId, severity, startDate, endDate, search
+  - Zod validation with .issues for error format (Zod v4)
+  - CSV format: French headers, UTF-8 BOM for Excel, Content-Disposition attachment, proper escaping
+  - JSON format: flat rows with user name/email, metadata (exportedAt, totalRecords)
+  - No pagination — exports all matching records
+  - Full-text search across action, entity, details, user.name, user.email (case-insensitive)
+  - Audit logs the export action itself (action: "EXPORT", entity: "AuditLog")
+  - Permission: audit:read
+- Enhanced `/home/z/my-project/src/app/api/audit-logs/route.ts` ✅
+  - GET handler enhancements:
+    - Zod validation for all query params using getQuerySchema
+    - `search` query param: full-text search across action, entity, details, user.name, user.email (case-insensitive, Prisma OR with mode: "insensitive")
+    - `severity` query param: filter by severity level (info, warning, critical)
+    - `entityId` filter: filter by specific entity ID
+    - Severity field already included in response (from Prisma model)
+    - All existing filters preserved (entity, action, userId, startDate, endDate, page, limit)
+    - Uses .issues for Zod v4 error format
+  - POST handler for creating manual audit log entries:
+    - Zod-validated body: action (required), entity (required), entityId?, details?, severity? (default "info"), oldValue?, newValue?
+    - Permission: audit:write or admin:* (using userHasAnyPermission)
+    - Sets userId from current user
+    - Sets ipAddress from x-forwarded-for or x-real-ip headers
+    - Sets userAgent from request headers
+    - Returns created audit log with user relation (status 201)
+- Middleware: `/api/audit-logs` prefix already covers stats and export sub-routes via startsWith ✅
+- Lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- 3 API route files created/enhanced for Module 13 advanced audit log
+- Stats endpoint: 12+ statistics with parallel queries, user enrichment, 30-day daily activity
+- Export endpoint: CSV (BOM, French headers, escaping) and JSON formats, search support, self-auditing
+- Enhanced GET: search, severity, entityId filters, Zod validation with .issues
+- New POST: manual audit log creation with audit:write/admin:* permission, IP/user-agent capture
+- All routes follow existing project patterns (auth, permissions, Zod v4, French errors, Prisma)
+- No middleware changes needed (existing /api/audit-logs prefix covers sub-routes)
+
+---
+Task ID: 13-frontend
+Agent: Module 13 Frontend Agent
+Task: Module 13 — Journal d'audit avancé (Frontend Section)
+
+Work Log:
+- Read worklog.md for project context and existing audit-logs-section.tsx as reference ✅
+- Read Prisma schema to confirm AuditLog model with severity field ✅
+- Read existing /api/audit-logs/route.ts to understand current API capabilities ✅
+- Updated /api/audit-logs/route.ts — Added search, severity, entityId filter parameters ✅
+  - search: full-text search across action, entity, details, user name, user email
+  - severity: filter by "info", "warning", "critical"
+  - entityId: filter by specific entity ID
+  - Default limit changed to 25
+- Created /api/audit-logs/stats/route.ts — Advanced audit statistics endpoint ✅
+  - KPI stats: totalLogs, todayCount, weekCount, criticalCount, warningCount, activeUsersCount
+  - Daily activity: last 30 days with date + count
+  - Recent critical: last 5 critical severity logs with user info
+  - Top active users: top 5 users by action count with bar visualization data
+  - Parallel DB queries for performance
+- Created /api/audit-logs/export/route.ts — Export endpoint ✅
+  - CSV format: French headers, UTF-8 BOM, proper escaping, Content-Disposition
+  - JSON format: flat rows with metadata (exportedAt, totalRecords)
+  - Applies same filters as main route (search, entity, action, severity, dates)
+  - Audit log on every export action
+- Created /src/components/sections/audit-advanced-section.tsx (~780 lines) ✅
+  - KPI Stats Cards (6 cards): Total entrées, Activité aujourd'hui, Cette semaine, Critiques (red when >0), Attention (amber when >0), Utilisateurs actifs
+  - Activity Timeline: 30-day bar chart with CSS bars, color intensity by count, tooltips
+  - Advanced Filters (collapsible): search, entity, action, severity, user, entityId, date range, reset
+  - Enhanced Audit Table: Date/Heure, Utilisateur, Action (badge), Entité (badge), ID Entité (clickable), Sévérité (badge with icon), Détails, expandable rows
+  - Expandable UPDATE rows: side-by-side old (red) vs new (green) value diff
+  - Expandable ANY row: full details (ipAddress, userAgent, entityId, details)
+  - Entity ID click-to-filter for tracking specific entity history
+  - Pagination with page number buttons
+  - Export CSV/JSON buttons in header
+  - Recent Critical Actions Panel (sidebar): last 5 critical with red accent
+  - Top Active Users Panel (sidebar): top 5 with progress bars
+  - Two-column layout on desktop (2/3 + 1/3), stacked on mobile
+  - Permission check: audit:read from session.user.roles
+  - Loading skeletons, error states, empty states
+  - French text, emerald green theme
+- Updated src/stores/app-store.ts: Added "audit-advanced" to AppSection type ✅
+- Updated src/app/page.tsx ✅
+  - Added imports: ShieldAlert icon, AuditAdvancedSection component
+  - Added auditAdvItems navigation for Module 13
+  - Added SectionContent switch case for "audit-advanced"
+  - Added SidebarGroup "Module 13 — Audit avancé"
+  - Updated getSectionTitle to include auditAdvItems
+  - Updated header badge: shows "Module 13" for audit-advanced
+  - Updated footer text to "Modules 1 à 13"
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- Module 13 fully implemented with 3 API routes + 1 frontend section + sidebar integration
+- API: /api/audit-logs (enhanced with search/severity/entityId), /api/audit-logs/stats (KPI + daily + critical + users), /api/audit-logs/export (CSV/JSON)
+- Frontend: AuditAdvancedSection with 6 KPI cards, 30-day activity timeline, collapsible advanced filters, enhanced audit table with expandable diff rows, export buttons, recent critical panel, top active users panel
+- Store: "audit-advanced" added to AppSection type
+- Page: Module 13 sidebar group, section rendering, header badge, footer updated
+- All features use audit:read permission, French text, emerald green theme
