@@ -1297,3 +1297,30 @@ Stage Summary:
 - Template: blank .xlsx with 5 sheets and correct column headers
 - All routes use getCurrentUser/userHasPermission, Zod v4 (error.issues), French error messages
 - Middleware updated with import:execute permission
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Module 14 — Import Excel (Complete Development & Deployment)
+
+Work Log:
+- Added ImportHistory model to Prisma schema (17 fields + 3 indexes)
+- Added User relation: importsUploaded ImportHistory[]
+- Created /api/imports/route.ts: GET (list history + filter + pagination), POST (upload Excel, parse sheets, preview)
+- Created /api/imports/[id]/route.ts: GET (detail), PATCH (execute import for selected sheets)
+- Created /api/imports/stats/route.ts: GET (7 aggregate KPIs + recent imports + monthly breakdown)
+- Created /api/imports/template/route.ts: GET (download blank .xlsx template with 5 sheets)
+- Execute import supports 5 sheet types: Equipe AAEA, Axes strategiques, Referentiel ACBF, PTA consolide AAEA, RACI institutionnelle
+- Created import-section.tsx (~650 lines): drag & drop upload, sheet selection, preview table, execute, results, history
+- Updated app-store.ts: Added "imports" to AppSection type
+- Updated page.tsx: Module 14 sidebar group, SectionContent case, header badge, footer
+- Updated middleware.ts: /api/imports permission (import:execute)
+- Lint: clean ✅ | Dev server: running ✅ | Pushed to GitHub ✅
+
+Stage Summary:
+- Module 14 fully implemented with 4 API routes + 1 frontend section + sidebar integration
+- Import workflow: Upload → Parse → Preview → Select sheets → Execute → View results
+- 5 sheet types supported with full mapping logic (users, axes, ACBF, activities, RACI)
+- ImportHistory tracks full lifecycle: status, row counts, errors, preview data
+- Download template feature generates blank .xlsx with expected column headers
+- Footer updated to "AAEA Pilotage 360 — Modules 1 à 14"
