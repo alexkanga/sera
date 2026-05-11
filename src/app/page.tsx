@@ -30,6 +30,7 @@ import {
   FileOutput,
   ShieldAlert,
   Upload as UploadIcon,
+  Download as DownloadIcon,
 } from "lucide-react";
 
 import { useAppStore, type AppSection } from "@/stores/app-store";
@@ -56,6 +57,7 @@ import { ReportsSection } from "@/components/sections/reports-section";
 import { NotificationsSection } from "@/components/sections/notifications-section";
 import { AuditAdvancedSection } from "@/components/sections/audit-advanced-section";
 import { ImportSection } from "@/components/sections/import-section";
+import { ExportsSection } from "@/components/sections/exports-section";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -154,6 +156,15 @@ const evidenceItems: {
   icon: React.ElementType;
 }[] = [
   { section: "evidence", label: "Preuves et documents", icon: FileText },
+];
+
+// Navigation items for Module 15
+const exportItems: {
+  section: AppSection;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { section: "exports", label: "Exports PDF/Excel/Word", icon: DownloadIcon },
 ];
 
 // Navigation items for Module 14
@@ -273,6 +284,8 @@ function SectionContent({ section }: { section: AppSection }) {
       return <AuditAdvancedSection />;
     case "imports":
       return <ImportSection />;
+    case "exports":
+      return <ExportsSection />;
     case "profile":
       return <ProfileSection />;
     case "change-password":
@@ -284,7 +297,7 @@ function SectionContent({ section }: { section: AppSection }) {
 
 // Get section title for the header
 function getSectionTitle(section: AppSection): string {
-  const item = [...navItems, ...orgItems, ...strategyItems, ...acbfItems, ...ptaItems, ...consolideItems, ...evidenceItems, ...raciItems, ...ganttItems, ...perfItems, ...reportItems, ...notifItems, ...auditAdvItems, ...importItems, ...accountItems].find((i) => i.section === section);
+  const item = [...navItems, ...orgItems, ...strategyItems, ...acbfItems, ...ptaItems, ...consolideItems, ...evidenceItems, ...raciItems, ...ganttItems, ...perfItems, ...reportItems, ...notifItems, ...auditAdvItems, ...importItems, ...exportItems, ...accountItems].find((i) => i.section === section);
   return item?.label ?? "Tableau de bord";
 }
 
@@ -788,6 +801,36 @@ export default function HomePage() {
 
           <SidebarSeparator />
 
+          {/* Module 15 — Exports */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Module 15 — Exports
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {exportItems.map((item) => (
+                  <SidebarMenuItem key={item.section}>
+                    <SidebarMenuButton
+                      isActive={currentSection === item.section}
+                      onClick={() => setCurrentSection(item.section)}
+                      tooltip={item.label}
+                      className={
+                        currentSection === item.section
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      }
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
           {/* Account Group */}
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -909,7 +952,7 @@ export default function HomePage() {
               variant="secondary"
               className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 text-[10px] px-1.5 py-0"
             >
-              {["imports"].includes(currentSection) ? "Module 14" : ["audit-advanced"].includes(currentSection) ? "Module 13" : ["notifications"].includes(currentSection) ? "Module 12" : ["reports"].includes(currentSection) ? "Module 11" : ["performance"].includes(currentSection) ? "Module 10" : ["gantt"].includes(currentSection) ? "Module 9" : ["raci"].includes(currentSection) ? "Module 8" : ["evidence"].includes(currentSection) ? "Module 7" : ["pta-consolide"].includes(currentSection) ? "Module 6" : ["activities"].includes(currentSection) ? "Module 5" : ["acbf-domains", "acbf-deliverables"].includes(currentSection) ? "Module 4" : ["strategic-axes"].includes(currentSection) ? "Module 3" : ["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
+              {["exports"].includes(currentSection) ? "Module 15" : ["imports"].includes(currentSection) ? "Module 14" : ["audit-advanced"].includes(currentSection) ? "Module 13" : ["notifications"].includes(currentSection) ? "Module 12" : ["reports"].includes(currentSection) ? "Module 11" : ["performance"].includes(currentSection) ? "Module 10" : ["gantt"].includes(currentSection) ? "Module 9" : ["raci"].includes(currentSection) ? "Module 8" : ["evidence"].includes(currentSection) ? "Module 7" : ["pta-consolide"].includes(currentSection) ? "Module 6" : ["activities"].includes(currentSection) ? "Module 5" : ["acbf-domains", "acbf-deliverables"].includes(currentSection) ? "Module 4" : ["strategic-axes"].includes(currentSection) ? "Module 3" : ["directions", "units", "org-overview"].includes(currentSection) ? "Module 2" : "Module 1"}
             </Badge>
           </div>
 
@@ -976,7 +1019,7 @@ export default function HomePage() {
           <footer className="mt-auto border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 dark:text-slate-500">
               <p>&copy; {new Date().getFullYear()} AAEA — African Water and Sanitation Association</p>
-              <p>AAEA Pilotage 360 — Modules 1 à 14</p>
+              <p>AAEA Pilotage 360 — Modules 1 à 15</p>
             </div>
           </footer>
         </div>

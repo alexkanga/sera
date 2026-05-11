@@ -22,6 +22,7 @@ export type AppSection =
   | "notifications"
   | "audit-advanced"
   | "imports"
+  | "exports"
   | "profile"
   | "change-password";
 

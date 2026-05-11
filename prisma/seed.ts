@@ -267,6 +267,7 @@ async function main() {
     { code: "import:*", name: "Gestion complète des imports", module: "import" },
 
     // Module Export
+    { code: "export:read", name: "Lire les exports", module: "export" },
     { code: "export:execute", name: "Exécuter des exports", module: "export" },
     { code: "export:*", name: "Gestion complète des exports", module: "export" },
   ];
@@ -307,7 +308,7 @@ async function main() {
         "pta:read", "pta:validate", "pta:create", "pta:update",
         "raci:read", "gantt:read", "dashboard:read",
         "docs:read", "reports:read", "reports:create", "reports:validate",
-        "notifications:read", "export:execute", "import:execute",
+        "notifications:read", "export:read", "export:execute", "import:execute",
         "audit:read",
       ],
     },
@@ -324,7 +325,7 @@ async function main() {
         "gantt:read", "dashboard:read",
         "docs:read", "docs:create",
         "reports:read", "reports:create", "reports:validate",
-        "notifications:read", "export:execute", "import:execute",
+        "notifications:read", "export:read", "export:execute", "import:execute",
         "audit:read",
       ],
     },
@@ -337,6 +338,7 @@ async function main() {
         "users:read", "pta:read", "pta:validate",
         "docs:read", "reports:read",
         "notifications:read", "dashboard:read",
+        "export:read",
       ],
     },
     {
@@ -349,7 +351,7 @@ async function main() {
         "docs:read", "docs:create",
         "reports:read", "notifications:read",
         "dashboard:read", "gantt:read",
-        "raci:read", "export:execute",
+        "raci:read", "export:read", "export:execute",
       ],
     },
     {
@@ -361,6 +363,7 @@ async function main() {
         "pta:read", "docs:read", "reports:read",
         "notifications:read", "dashboard:read", "gantt:read",
         "raci:read", "strategic:read", "acbf:read",
+        "export:read",
       ],
     },
   ];

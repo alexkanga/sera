@@ -25,6 +25,7 @@ const routePermissions: Record<string, string> = {
   "/api/reports": "reports:read",
   "/api/notifications": "notifications:read",
   "/api/imports": "import:execute",
+  "/api/exports": "export:read",
 };
 
 export async function middleware(request: NextRequest) {
