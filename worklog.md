@@ -1134,3 +1134,30 @@ Stage Summary:
 - Store: "audit-advanced" added to AppSection type
 - Page: Module 13 sidebar group, section rendering, header badge, footer updated
 - All features use audit:read permission, French text, emerald green theme
+
+---
+Task ID: 13
+Agent: Main Agent
+Task: Module 13 — Journal d'audit avancé (Complete Development & Deployment)
+
+Work Log:
+- Analyzed existing audit-logs module (basic GET route + table section from Module 1)
+- Updated Prisma schema: Added `severity` field (String, default "info") and 5 performance indexes to AuditLog model
+- Created `/api/audit-logs/stats` route: KPI stats (totalLogs, todayCount, weekCount, criticalCount, warningCount, activeUsersCount), 30-day dailyActivity, recentCritical (last 5), byUser (top 5)
+- Created `/api/audit-logs/export` route: CSV (UTF-8 BOM, French headers) and JSON export with all filters, self-auditing
+- Enhanced `/api/audit-logs` route: Added search (full-text), severity, entityId filters
+- Created `audit-advanced-section.tsx` (~780 lines): 6 KPI cards, 30-day activity timeline bar chart, collapsible advanced filters, enhanced audit table with severity badges and expandable rows, export buttons, recent critical panel, top active users panel
+- Updated `app-store.ts`: Added "audit-advanced" to AppSection type
+- Updated `page.tsx`: Added Module 13 sidebar group (ShieldAlert icon), SectionContent case, header badge (Module 13), footer (Modules 1 à 13)
+- Lint check: clean ✅
+- Dev server: running ✅
+- Pushed to GitHub: https://github.com/alexkanga/sera.git (main branch) ✅
+
+Stage Summary:
+- Module 13 fully implemented with 3 API routes + 1 frontend section + sidebar integration
+- API: /api/audit-logs (enhanced with search, severity, entityId), /api/audit-logs/stats (12+ KPIs), /api/audit-logs/export (CSV/JSON)
+- Frontend: AuditAdvancedSection with KPI cards, activity timeline, advanced filters, enhanced table, export, side panels
+- Prisma: Added severity field + 5 indexes to AuditLog
+- Module 13 sidebar group added between Module 12 and Account groups
+- Header badge shows "Module 13" for audit-advanced section
+- Footer updated to "AAEA Pilotage 360 — Modules 1 à 13"
