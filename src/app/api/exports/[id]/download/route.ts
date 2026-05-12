@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import fs from "fs/promises";
-import path from "path";
 
 const CONTENT_TYPES: Record<string, string> = {
   pdf: "application/pdf",
@@ -10,7 +8,7 @@ const CONTENT_TYPES: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
-// GET /api/exports/[id]/download — Download generated file
+// GET /api/exports/[id]/download — Download generated file from DB
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -37,30 +35,21 @@ export async function GET(
     );
   }
 
-  if (!exportJob.filePath || !exportJob.fileName) {
+  if (!exportJob.fileData || !exportJob.fileName) {
     return NextResponse.json(
       { error: "Fichier d'export introuvable" },
       { status: 404 }
     );
   }
 
-  try {
-    const fullPath = path.join(process.cwd(), exportJob.filePath);
-    const fileBuffer = await fs.readFile(fullPath);
+  const contentType = CONTENT_TYPES[exportJob.format] || "application/octet-stream";
+  const fileBuffer = Buffer.from(exportJob.fileData);
 
-    const contentType = CONTENT_TYPES[exportJob.format] || "application/octet-stream";
-
-    return new NextResponse(fileBuffer, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="${exportJob.fileName}"`,
-        "Content-Length": String(fileBuffer.length),
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "Fichier introuvable sur le serveur" },
-      { status: 404 }
-    );
-  }
+  return new NextResponse(fileBuffer, {
+    headers: {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${exportJob.fileName}"`,
+      "Content-Length": String(fileBuffer.length),
+    },
+  });
 }

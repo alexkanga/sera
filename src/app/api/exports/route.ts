@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Generate the file asynchronously
+  // Generate the file in memory
   try {
     const result = await generateExportFile(type, format, filters, exportJob.id);
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         status: "Terminé",
         fileName: result.fileName,
         fileSize: result.fileSize,
-        filePath: result.filePath,
+        fileData: Buffer.from(result.fileData),
         recordCount: result.recordCount,
         completedAt: new Date(),
       },

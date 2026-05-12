@@ -617,7 +617,7 @@ model ExportJob {
   status          String    @default("En attente") // "En attente", "En cours", "Terminé", "Erreur"
   fileName        String?   // Generated file name
   fileSize        Int       @default(0) // Size in bytes
-  filePath        String?   // Relative path to the generated file
+  fileData        Bytes?    // File content stored as binary (works on Vercel read-only FS)
   filters         String?   @db.Text // JSON string with filters used for generation
   recordCount     Int       @default(0) // Number of records included
   errorMessage    String?   @db.Text // Error message if failed

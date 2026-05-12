@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import fs from "fs/promises";
-import path from "path";
 
 // GET /api/exports/[id] — Export detail
 export async function GET(
@@ -30,7 +28,7 @@ export async function GET(
   return NextResponse.json(exportJob);
 }
 
-// DELETE /api/exports/[id] — Delete export job and file
+// DELETE /api/exports/[id] — Delete export job
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -57,17 +55,7 @@ export async function DELETE(
     );
   }
 
-  // Delete physical file if exists
-  if (exportJob.filePath) {
-    try {
-      const fullPath = path.join(process.cwd(), exportJob.filePath);
-      await fs.unlink(fullPath);
-    } catch {
-      // File might not exist, ignore error
-    }
-  }
-
-  // Delete export job record
+  // Delete export job record (fileData is stored in DB, no physical file to delete)
   await db.exportJob.delete({ where: { id } });
 
   // Audit log
