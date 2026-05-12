@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import PDFDocument from "pdfkit";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import * as XLSX from "xlsx";
 import {
   Document as DocxDocument,
@@ -23,6 +23,212 @@ interface ExportResult {
 
 function timestampStr(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+// Helper: hex color string to pdf-lib rgb
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "");
+  return {
+    r: parseInt(h.substring(0, 2), 16) / 255,
+    g: parseInt(h.substring(2, 4), 16) / 255,
+    b: parseInt(h.substring(4, 6), 16) / 255,
+  };
+}
+
+// A4 dimensions in points
+const A4_PORTRAIT = { width: 595.28, height: 841.89 };
+const A4_LANDSCAPE = { width: 841.89, height: 595.28 };
+
+// Helper: draw a text table on a pdf-lib page, handles pagination
+async function drawPdfTable(
+  pdfDoc: PDFDocument,
+  title: string,
+  subtitle: string,
+  headers: string[],
+  colWidths: number[],
+  rows: string[][],
+  pageLayout: "portrait" | "landscape"
+) {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const dims = pageLayout === "landscape" ? A4_LANDSCAPE : A4_PORTRAIT;
+  const margin = 40;
+  const headerHeight = 20;
+  const rowHeight = 16;
+  const titleSize = 16;
+  const subtitleSize = 9;
+  const headerFontSize = 7;
+  const cellFontSize = 6.5;
+  const bottomMargin = 40;
+
+  const greenHex = hexToRgb("#047857");
+  const darkSlateHex = hexToRgb("#1e293b");
+  const lightGreenHex = hexToRgb("#f0fdf4");
+  const grayTextHex = hexToRgb("#64748b");
+
+  // First page
+  let page = pdfDoc.addPage([dims.width, dims.height]);
+  let y = dims.height - margin;
+
+  // Title
+  page.drawText(title, {
+    x: margin,
+    y: y - titleSize,
+    size: titleSize,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= titleSize + 4;
+
+  // Subtitle
+  page.drawText(subtitle, {
+    x: margin,
+    y: y - subtitleSize,
+    size: subtitleSize,
+    font,
+    color: rgb(grayTextHex.r, grayTextHex.g, grayTextHex.b),
+  });
+  y -= subtitleSize + 16;
+
+  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+  const startX = margin;
+
+  const drawTableHeader = (currentPage: typeof page, currentY: number) => {
+    currentPage.drawRectangle({
+      x: startX,
+      y: currentY - headerHeight,
+      width: tableWidth,
+      height: headerHeight,
+      color: rgb(greenHex.r, greenHex.g, greenHex.b),
+    });
+    let x = startX;
+    for (let i = 0; i < headers.length; i++) {
+      currentPage.drawText(headers[i], {
+        x: x + 3,
+        y: currentY - headerHeight + 6,
+        size: headerFontSize,
+        font: fontBold,
+        color: rgb(1, 1, 1),
+      });
+      x += colWidths[i];
+    }
+    return currentY - headerHeight - 2;
+  };
+
+  y = drawTableHeader(page, y);
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    if (y - rowHeight < bottomMargin) {
+      page = pdfDoc.addPage([dims.width, dims.height]);
+      y = dims.height - margin;
+      y = drawTableHeader(page, y);
+    }
+
+    const row = rows[rowIdx];
+    const bgColor = rowIdx % 2 === 0 ? rgb(lightGreenHex.r, lightGreenHex.g, lightGreenHex.b) : rgb(1, 1, 1);
+    page.drawRectangle({
+      x: startX,
+      y: y - rowHeight,
+      width: tableWidth,
+      height: rowHeight,
+      color: bgColor,
+    });
+
+    let x = startX;
+    for (let i = 0; i < row.length; i++) {
+      const text = (row[i] || "").substring(0, 40);
+      page.drawText(text, {
+        x: x + 3,
+        y: y - rowHeight + 4,
+        size: cellFontSize,
+        font,
+        color: rgb(darkSlateHex.r, darkSlateHex.g, darkSlateHex.b),
+      });
+      x += colWidths[i];
+    }
+    y -= rowHeight + 2;
+  }
+
+  return y;
+}
+
+// Helper: draw a simple list document (for Reports, Evidence, Dashboard KPIs)
+async function drawPdfListDocument(
+  pdfDoc: PDFDocument,
+  title: string,
+  subtitle: string,
+  items: Array<{ heading: string; details: string[] }>,
+  pageLayout: "portrait" | "landscape"
+) {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const dims = pageLayout === "landscape" ? A4_LANDSCAPE : A4_PORTRAIT;
+  const margin = 50;
+  const bottomMargin = 50;
+  const greenHex = hexToRgb("#047857");
+  const grayTextHex = hexToRgb("#64748b");
+  const darkTextHex = hexToRgb("#1e293b");
+
+  let page = pdfDoc.addPage([dims.width, dims.height]);
+  let y = dims.height - margin;
+
+  // Title
+  page.drawText(title, {
+    x: margin,
+    y: y - 18,
+    size: 18,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= 26;
+
+  // Subtitle
+  if (subtitle) {
+    page.drawText(subtitle, {
+      x: margin,
+      y: y - 10,
+      size: 10,
+      font,
+      color: rgb(grayTextHex.r, grayTextHex.g, grayTextHex.b),
+    });
+    y -= 18;
+  }
+
+  for (const item of items) {
+    if (y - 60 < bottomMargin) {
+      page = pdfDoc.addPage([dims.width, dims.height]);
+      y = dims.height - margin;
+    }
+
+    // Heading
+    page.drawText(item.heading, {
+      x: margin,
+      y: y - 11,
+      size: 11,
+      font: fontBold,
+      color: rgb(greenHex.r, greenHex.g, greenHex.b),
+    });
+    y -= 16;
+
+    // Detail lines
+    for (const detail of item.details) {
+      if (y - 12 < bottomMargin) {
+        page = pdfDoc.addPage([dims.width, dims.height]);
+        y = dims.height - margin;
+      }
+      page.drawText(detail.substring(0, 120), {
+        x: margin + 10,
+        y: y - 9,
+        size: 9,
+        font,
+        color: rgb(darkTextHex.r, darkTextHex.g, darkTextHex.b),
+      });
+      y -= 13;
+    }
+    y -= 6;
+  }
 }
 
 // ============================================================
@@ -54,70 +260,36 @@ async function generatePtaPdf(_exportId: string, filters?: Record<string, unknow
   const activities = await getActivitiesData(filters);
   const fileName = `PTA_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-
-  // Title
-  doc.fontSize(18).fillColor("#047857").text("AAEA Pilotage 360 — Export PTA", { align: "center" });
-  doc.fontSize(10).fillColor("#64748b").text(`Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}`, { align: "center" });
-  doc.moveDown(1);
-
-  // Table headers
+  const pdfDoc = await PDFDocument.create();
   const headers = ["Code", "Titre", "Responsable", "Direction", "Axe Strat.", "Domaine ACBF", "Priorité", "Statut", "Avancement", "Validation"];
   const colWidths = [70, 160, 100, 90, 90, 90, 55, 70, 60, 60];
-  let y = doc.y;
-  const startX = 40;
 
-  // Header row
-  doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 20).fill("#047857");
-  let x = startX;
-  for (let i = 0; i < headers.length; i++) {
-    doc.fontSize(7).fillColor("#ffffff").text(headers[i], x + 3, y + 5, { width: colWidths[i] - 6, height: 16 });
-    x += colWidths[i];
-  }
-  y += 22;
+  const rows = activities.map((act) => [
+    act.activityCode || "",
+    act.title || "",
+    act.responsible?.name || "",
+    act.direction?.name || "",
+    act.primaryAxis?.name || "",
+    act.acbfDomain?.name || "",
+    act.priority || "",
+    act.status || "",
+    `${Math.round(act.progressRate)}%`,
+    act.validationStatus || "",
+  ]);
 
-  // Data rows
-  for (const act of activities) {
-    if (y > 540) {
-      doc.addPage({ layout: "landscape" });
-      y = 40;
-    }
-    const row = [
-      act.activityCode || "",
-      act.title || "",
-      act.responsible?.name || "",
-      act.direction?.name || "",
-      act.primaryAxis?.name || "",
-      act.acbfDomain?.name || "",
-      act.priority || "",
-      act.status || "",
-      `${Math.round(act.progressRate)}%`,
-      act.validationStatus || "",
-    ];
-    x = startX;
-    doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 16).fill(y % 2 === 0 ? "#f0fdf4" : "#ffffff");
-    for (let i = 0; i < row.length; i++) {
-      doc.fontSize(6.5).fillColor("#1e293b").text(row[i].substring(0, 40), x + 3, y + 4, { width: colWidths[i] - 6, height: 14 });
-      x += colWidths[i];
-    }
-    y += 18;
-  }
+  await drawPdfTable(
+    pdfDoc,
+    "AAEA Pilotage 360 — Export PTA",
+    `Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}`,
+    headers,
+    colWidths,
+    rows,
+    "landscape"
+  );
 
-  // Footer
-  doc.moveDown(2);
-  doc.fontSize(8).fillColor("#94a3b8").text(`Total: ${activities.length} activités`, startX, y);
-
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: activities.length });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: activities.length };
 }
 
 async function generatePtaXlsx(_exportId: string, filters?: Record<string, unknown>): Promise<ExportResult> {
@@ -230,58 +402,34 @@ async function generateRaciPdf(_exportId: string, filters?: Record<string, unkno
   const items = await getRaciData(filters);
   const fileName = `RACI_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-
-  doc.fontSize(18).fillColor("#047857").text("AAEA Pilotage 360 — Export RACI", { align: "center" });
-  doc.fontSize(10).fillColor("#64748b").text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, { align: "center" });
-  doc.moveDown(1);
-
+  const pdfDoc = await PDFDocument.create();
   const headers = ["Livrable", "Domaine", "R (Responsable)", "A (Approbateur)", "C (Contributeurs)", "I (Informés)", "Priorité", "Échéance"];
   const colWidths = [140, 100, 100, 100, 120, 120, 60, 80];
-  let y = doc.y;
-  const startX = 30;
 
-  doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 20).fill("#047857");
-  let x = startX;
-  for (let i = 0; i < headers.length; i++) {
-    doc.fontSize(7).fillColor("#ffffff").text(headers[i], x + 3, y + 5, { width: colWidths[i] - 6 });
-    x += colWidths[i];
-  }
-  y += 22;
+  const rows = items.map((item) => [
+    item.acbfDeliverable?.name || item.activity?.title || "",
+    item.acbfDeliverable?.domain?.name || "",
+    item.responsible || item.responsibleUser?.name || "",
+    item.accountable || item.accountableUser?.name || "",
+    item.contributors || "",
+    item.informed || "",
+    item.priority || "",
+    item.indicativeDeadline ? new Date(item.indicativeDeadline).toLocaleDateString("fr-FR") : "",
+  ]);
 
-  for (const item of items) {
-    if (y > 540) { doc.addPage({ layout: "landscape" }); y = 40; }
-    const row = [
-      item.acbfDeliverable?.name || item.activity?.title || "",
-      item.acbfDeliverable?.domain?.name || "",
-      item.responsible || item.responsibleUser?.name || "",
-      item.accountable || item.accountableUser?.name || "",
-      item.contributors || "",
-      item.informed || "",
-      item.priority || "",
-      item.indicativeDeadline ? new Date(item.indicativeDeadline).toLocaleDateString("fr-FR") : "",
-    ];
-    x = startX;
-    doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 16).fill(y % 2 === 0 ? "#f0fdf4" : "#ffffff");
-    for (let i = 0; i < row.length; i++) {
-      doc.fontSize(6.5).fillColor("#1e293b").text(row[i].substring(0, 50), x + 3, y + 4, { width: colWidths[i] - 6, height: 14 });
-      x += colWidths[i];
-    }
-    y += 18;
-  }
+  await drawPdfTable(
+    pdfDoc,
+    "AAEA Pilotage 360 — Export RACI",
+    `Généré le ${new Date().toLocaleDateString("fr-FR")}`,
+    headers,
+    colWidths,
+    rows,
+    "landscape"
+  );
 
-  doc.fontSize(8).fillColor("#94a3b8").text(`Total: ${items.length} entrées RACI`, startX, y + 10);
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: items.length });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: items.length };
 }
 
 async function generateRaciXlsx(_exportId: string, filters?: Record<string, unknown>): Promise<ExportResult> {
@@ -360,50 +508,118 @@ async function generateDashboardPdf(_exportId: string, _filters?: Record<string,
 
   const fileName = `Dashboard_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  doc.fontSize(20).fillColor("#047857").text("AAEA Pilotage 360 — Tableau de Bord", { align: "center" });
-  doc.fontSize(10).fillColor("#64748b").text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, { align: "center" });
-  doc.moveDown(2);
+  const greenHex = hexToRgb("#047857");
+  const grayTextHex = hexToRgb("#64748b");
+  const darkTextHex = hexToRgb("#1e293b");
+
+  const page = pdfDoc.addPage([A4_PORTRAIT.width, A4_PORTRAIT.height]);
+  const margin = 50;
+  let y = A4_PORTRAIT.height - margin;
+
+  // Title
+  page.drawText("AAEA Pilotage 360 — Tableau de Bord", {
+    x: margin,
+    y: y - 20,
+    size: 20,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= 32;
+
+  page.drawText(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, {
+    x: margin,
+    y: y - 10,
+    size: 10,
+    font,
+    color: rgb(grayTextHex.r, grayTextHex.g, grayTextHex.b),
+  });
+  y -= 28;
 
   // KPIs
+  page.drawText("Indicateurs Clés", {
+    x: margin,
+    y: y - 12,
+    size: 14,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= 22;
+
   const kpis = [
     { label: "Total Activités", value: String(totalActivities) },
     { label: "Avancement Moyen", value: `${Math.round(avgProgress._avg.progressRate || 0)}%` },
     { label: "En Retard", value: String(overdue) },
   ];
   for (const kpi of kpis) {
-    doc.fontSize(11).fillColor("#047857").text(`${kpi.label}: `, { continued: true });
-    doc.fontSize(14).fillColor("#1e293b").text(kpi.value);
+    page.drawText(`${kpi.label}: `, {
+      x: margin + 10,
+      y: y - 11,
+      size: 11,
+      font: fontBold,
+      color: rgb(greenHex.r, greenHex.g, greenHex.b),
+    });
+    const labelWidth = fontBold.widthOfTextAtSize(`${kpi.label}: `, 11);
+    page.drawText(kpi.value, {
+      x: margin + 10 + labelWidth,
+      y: y - 11,
+      size: 14,
+      font: fontBold,
+      color: rgb(darkTextHex.r, darkTextHex.g, darkTextHex.b),
+    });
+    y -= 22;
   }
-  doc.moveDown(1);
+  y -= 10;
 
   // By Status
-  doc.fontSize(12).fillColor("#047857").text("Répartition par Statut");
-  doc.moveDown(0.5);
+  page.drawText("Répartition par Statut", {
+    x: margin,
+    y: y - 12,
+    size: 12,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= 20;
+
   for (const s of byStatus) {
-    doc.fontSize(10).fillColor("#1e293b").text(`  • ${s.status}: ${s._count.status}`);
+    page.drawText(`• ${s.status}: ${s._count.status}`, {
+      x: margin + 10,
+      y: y - 10,
+      size: 10,
+      font,
+      color: rgb(darkTextHex.r, darkTextHex.g, darkTextHex.b),
+    });
+    y -= 16;
   }
-  doc.moveDown(1);
+  y -= 10;
 
   // By Priority
-  doc.fontSize(12).fillColor("#047857").text("Répartition par Priorité");
-  doc.moveDown(0.5);
+  page.drawText("Répartition par Priorité", {
+    x: margin,
+    y: y - 12,
+    size: 12,
+    font: fontBold,
+    color: rgb(greenHex.r, greenHex.g, greenHex.b),
+  });
+  y -= 20;
+
   for (const p of byPriority) {
-    doc.fontSize(10).fillColor("#1e293b").text(`  • ${p.priority}: ${p._count.priority}`);
+    page.drawText(`• ${p.priority}: ${p._count.priority}`, {
+      x: margin + 10,
+      y: y - 10,
+      size: 10,
+      font,
+      color: rgb(darkTextHex.r, darkTextHex.g, darkTextHex.b),
+    });
+    y -= 16;
   }
 
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: totalActivities });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: totalActivities };
 }
 
 async function generateDashboardXlsx(_exportId: string, _filters?: Record<string, unknown>): Promise<ExportResult> {
@@ -483,30 +699,24 @@ async function generateReportPdf(_exportId: string, filters?: Record<string, unk
 
   const fileName = `Rapports_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const pdfDoc = await PDFDocument.create();
+  await drawPdfListDocument(
+    pdfDoc,
+    "AAEA Pilotage 360 — Export Rapports",
+    `Généré le ${new Date().toLocaleDateString("fr-FR")}`,
+    reports.map((r) => ({
+      heading: r.title,
+      details: [
+        `Modèle: ${r.template.name} | Période: ${r.period} | Statut: ${r.status}`,
+        r.summary ? r.summary.substring(0, 200) : "",
+      ].filter(Boolean),
+    })),
+    "portrait"
+  );
 
-  doc.fontSize(18).fillColor("#047857").text("AAEA Pilotage 360 — Export Rapports", { align: "center" });
-  doc.moveDown(1);
-
-  for (const r of reports) {
-    if (doc.y > 700) doc.addPage();
-    doc.fontSize(12).fillColor("#047857").text(r.title);
-    doc.fontSize(9).fillColor("#64748b").text(`Modèle: ${r.template.name} | Période: ${r.period} | Statut: ${r.status}`);
-    if (r.summary) doc.fontSize(9).fillColor("#1e293b").text(r.summary.substring(0, 200));
-    doc.moveDown(0.5);
-  }
-
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: reports.length });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: reports.length };
 }
 
 async function generateReportXlsx(_exportId: string, filters?: Record<string, unknown>): Promise<ExportResult> {
@@ -572,47 +782,33 @@ async function generateGanttPdf(_exportId: string, filters?: Record<string, unkn
 
   const fileName = `Gantt_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-
-  doc.fontSize(18).fillColor("#047857").text("AAEA Pilotage 360 — Export Gantt", { align: "center" });
-  doc.moveDown(1);
-
+  const pdfDoc = await PDFDocument.create();
   const headers = ["Code", "Titre", "Responsable", "Début", "Fin", "Statut", "Avancement"];
   const colWidths = [70, 180, 110, 70, 70, 80, 70];
-  let y = doc.y;
-  const startX = 40;
 
-  doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 20).fill("#047857");
-  let x = startX;
-  for (let i = 0; i < headers.length; i++) {
-    doc.fontSize(8).fillColor("#ffffff").text(headers[i], x + 3, y + 5, { width: colWidths[i] - 6 });
-    x += colWidths[i];
-  }
-  y += 22;
+  const rows = activities.map((act) => [
+    act.activityCode || "",
+    act.title || "",
+    act.responsible?.name || "",
+    act.startDate ? new Date(act.startDate).toLocaleDateString("fr-FR") : "",
+    act.endDate ? new Date(act.endDate).toLocaleDateString("fr-FR") : "",
+    act.status || "",
+    `${Math.round(act.progressRate)}%`,
+  ]);
 
-  for (const act of activities) {
-    if (y > 540) { doc.addPage({ layout: "landscape" }); y = 40; }
-    const row = [act.activityCode || "", act.title || "", act.responsible?.name || "", act.startDate ? new Date(act.startDate).toLocaleDateString("fr-FR") : "", act.endDate ? new Date(act.endDate).toLocaleDateString("fr-FR") : "", act.status || "", `${Math.round(act.progressRate)}%`];
-    x = startX;
-    doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 16).fill(y % 2 === 0 ? "#f0fdf4" : "#ffffff");
-    for (let i = 0; i < row.length; i++) {
-      doc.fontSize(7).fillColor("#1e293b").text(row[i].substring(0, 40), x + 3, y + 4, { width: colWidths[i] - 6, height: 14 });
-      x += colWidths[i];
-    }
-    y += 18;
-  }
+  await drawPdfTable(
+    pdfDoc,
+    "AAEA Pilotage 360 — Export Gantt",
+    `Généré le ${new Date().toLocaleDateString("fr-FR")}`,
+    headers,
+    colWidths,
+    rows,
+    "landscape"
+  );
 
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: activities.length });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: activities.length };
 }
 
 async function generateGanttXlsx(_exportId: string, filters?: Record<string, unknown>): Promise<ExportResult> {
@@ -685,31 +881,25 @@ async function generateEvidencePdf(_exportId: string, filters?: Record<string, u
 
   const fileName = `Preuves_Export_${timestampStr()}.pdf`;
 
-  const chunks: Buffer[] = [];
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
-  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const pdfDoc = await PDFDocument.create();
+  await drawPdfListDocument(
+    pdfDoc,
+    "AAEA Pilotage 360 — Export Preuves",
+    `Généré le ${new Date().toLocaleDateString("fr-FR")}`,
+    evidence.map((e) => ({
+      heading: e.name,
+      details: [
+        `Type: ${e.fileType} | Catégorie: ${e.category} | Vérifié: ${e.isVerified ? "Oui" : "Non"}`,
+        e.activity ? `Activité: ${e.activity.activityCode} - ${e.activity.title}` : "",
+        `Téléversé par: ${e.uploadedBy.name} le ${new Date(e.createdAt).toLocaleDateString("fr-FR")}`,
+      ].filter(Boolean),
+    })),
+    "portrait"
+  );
 
-  doc.fontSize(18).fillColor("#047857").text("AAEA Pilotage 360 — Export Preuves", { align: "center" });
-  doc.moveDown(1);
-
-  for (const e of evidence) {
-    if (doc.y > 700) doc.addPage();
-    doc.fontSize(11).fillColor("#047857").text(e.name);
-    doc.fontSize(9).fillColor("#64748b").text(`Type: ${e.fileType} | Catégorie: ${e.category} | Vérifié: ${e.isVerified ? "Oui" : "Non"}`);
-    if (e.activity) doc.fontSize(9).fillColor("#64748b").text(`Activité: ${e.activity.activityCode} - ${e.activity.title}`);
-    doc.fontSize(9).fillColor("#64748b").text(`Téléversé par: ${e.uploadedBy.name} le ${new Date(e.createdAt).toLocaleDateString("fr-FR")}`);
-    doc.moveDown(0.5);
-  }
-
-  doc.end();
-
-  return new Promise((resolve, reject) => {
-    doc.on("end", () => {
-      const fileData = Buffer.concat(chunks);
-      resolve({ fileName, fileSize: fileData.length, fileData, recordCount: evidence.length });
-    });
-    doc.on("error", reject);
-  });
+  const pdfBytes = await pdfDoc.save();
+  const fileData = Buffer.from(pdfBytes);
+  return { fileName, fileSize: fileData.length, fileData, recordCount: evidence.length };
 }
 
 async function generateEvidenceXlsx(_exportId: string, filters?: Record<string, unknown>): Promise<ExportResult> {
