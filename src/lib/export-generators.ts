@@ -14,6 +14,7 @@ import {
   WidthType as DocxWidthType,
   HeadingLevel as DocxHeadingLevel,
   AlignmentType as DocxAlignmentType,
+  Packer as DocxPacker,
 } from "docx";
 
 interface ExportResult {
@@ -227,7 +228,7 @@ async function generatePtaDocx(exportId: string, filters?: Record<string, unknow
     ],
   });
 
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
 
   const stats = fsSync.statSync(filePath);
@@ -382,7 +383,7 @@ async function generateRaciDocx(exportId: string, filters?: Record<string, unkno
     }],
   });
 
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
   const stats = fsSync.statSync(filePath);
   return { fileName, fileSize: stats.size, filePath: `${EXPORTS_DIR}/${fileName}`, recordCount: items.length };
@@ -512,7 +513,7 @@ async function generateDashboardDocx(_exportId: string, _filters?: Record<string
     }],
   });
 
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
   const stats = fsSync.statSync(filePath);
   return { fileName, fileSize: stats.size, filePath: `${EXPORTS_DIR}/${fileName}`, recordCount: totalActivities };
@@ -614,7 +615,7 @@ async function generateReportDocx(_exportId: string, filters?: Record<string, un
   }
 
   const doc = new DocxDocument({ sections: [{ children }] });
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
   const stats = fsSync.statSync(filePath);
   return { fileName, fileSize: stats.size, filePath: `${EXPORTS_DIR}/${fileName}`, recordCount: reports.length };
@@ -733,7 +734,7 @@ async function generateGanttDocx(_exportId: string, filters?: Record<string, unk
     new DocxTable({ rows: [new DocxTableRow({ children: headerCells }), ...rows], width: { size: 100, type: DocxWidthType.PERCENTAGE } }),
   ] }] });
 
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
   const stats = fsSync.statSync(filePath);
   return { fileName, fileSize: stats.size, filePath: `${EXPORTS_DIR}/${fileName}`, recordCount: activities.length };
@@ -829,7 +830,7 @@ async function generateEvidenceDocx(_exportId: string, filters?: Record<string, 
   }
 
   const doc = new DocxDocument({ sections: [{ children }] });
-  const buffer = await doc.save();
+  const buffer = await DocxPacker.toBuffer(doc);
   fsSync.writeFileSync(filePath, Buffer.from(buffer));
   const stats = fsSync.statSync(filePath);
   return { fileName, fileSize: stats.size, filePath: `${EXPORTS_DIR}/${fileName}`, recordCount: evidence.length };
