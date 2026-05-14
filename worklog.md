@@ -1577,3 +1577,34 @@ Stage Summary:
 - Validations: 4 new centralized schemas for ACBF domains and deliverables
 - 7 files changed, 160 insertions, 262 deletions (net reduction)
 - Awaiting authorization for ÉLEVÉ, MOYEN, MINEUR fixes
+
+---
+Task ID: Module4-ELEVE-MOYEN-MINEUR
+Agent: Main Agent
+Task: Module 4 — Référentiel ACBF ÉLEVÉ, MOYEN, MINEUR Optimizations (11 fixes)
+
+Work Log:
+- Evaluated remaining issues across all 6 Module 4 files
+- Identified 4 ÉLEVÉ, 6 MOYEN, 1 MINEUR issues
+- Fix 4.6 — Audit newValue consistency: PUT domains/deliverables now log full updated record instead of partial updateData
+- Fix 4.7 — Priority validation: z.enum(["Haute","Moyenne","Basse"]) replaces z.string() in create/update deliverable schemas
+- Fix 4.8 — Status validation: z.string().max(100) adds length limit in deliverable schemas
+- Fix 4.9 — Frontend-backend schema alignment verified (deliverableFormSchema already matches)
+- Fix 4.10 — DeliverableItem type: Added missing 'description' field to match API response
+- Fix 4.11 — Empty section comments: Removed duplicate empty 'Permission Helpers' section headers in both components
+- Fix 4.12 — Domain dropdown refresh: Extracted fetchDomainOptions as useCallback, now refreshes on refreshKey change
+- Fix 4.13 — Archive oldValue fix: Now logs actual existingDomain.isActive instead of hardcoded true
+- Fix 4.14 — Description char counter: Added maxLength={2000} + character counter on create/edit description textareas
+- Fix 4.15 — Audit oldValue accuracy for deliverables: same pattern as domains
+- Fix 4.16 — Verified Status tabs already use correct masculine form for Domaine/Livrable
+- Lint check: clean ✅
+- Dev server: running ✅
+- Pushed to GitHub: https://github.com/alexkanga/sera.git ✅
+
+Stage Summary:
+- Module 4 FULLY optimized with 16 total fixes (5 CRITIQUE + 4 ÉLEVÉ + 6 MOYEN + 1 MINEUR)
+- Backend: Priority enum validation, status max length, consistent audit logging, accurate archive oldValue
+- Frontend: DeliverableItem type fix, domain dropdown refresh, description char counter, empty comments removed
+- 5 files changed, 44 insertions, 38 deletions
+- Module 4 evaluation COMPLETE
+- Awaiting authorization for Module 5 evaluation
