@@ -3,6 +3,7 @@ import { hash, compare } from "bcryptjs";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/permissions";
 import { changePasswordSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
 
 // POST /api/auth/change-password
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = changePasswordSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (validated.newPassword !== validated.confirmPassword) {
       return NextResponse.json(
@@ -37,9 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     const hashedPassword = await hash(validated.newPassword, 12);
+    const now = new Date();
     await db.user.update({
       where: { id: currentUser.id },
-      data: { password: hashedPassword, failedLoginAttempts: 0 },
+      data: {
+        password: hashedPassword,
+        failedLoginAttempts: 0,
+        passwordChangedAt: now,
+      },
     });
 
     await db.auditLog.create({
@@ -49,6 +56,8 @@ export async function POST(request: NextRequest) {
         entity: "User",
         entityId: currentUser.id,
         details: "Changement de mot de passe",
+        ipAddress,
+        userAgent,
       },
     });
 

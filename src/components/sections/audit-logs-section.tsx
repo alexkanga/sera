@@ -23,6 +23,7 @@ import {
   Clock,
   ArrowRight,
 } from "lucide-react";
+import { checkPermission } from "@/lib/client-permissions";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,6 +126,7 @@ const ACTION_OPTIONS = [
   { value: "RESTORE", label: "Restauration" },
   { value: "DELETE", label: "Suppression" },
   { value: "LOGIN", label: "Connexion" },
+  { value: "LOGIN_FAILED", label: "Tentative échouée" },
   { value: "LOGOUT", label: "Déconnexion" },
   { value: "LOCK", label: "Verrouillage" },
   { value: "UNLOCK", label: "Déverrouillage" },
@@ -137,17 +139,6 @@ const ACTION_OPTIONS = [
 // ============================================================
 // Helpers
 // ============================================================
-
-function hasAuditPermission(
-  roles: Array<{ permissions: string[] }> | undefined
-): boolean {
-  if (!roles) return false;
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === "audit:read" || p === "audit:*" || p === "admin:*"
-    )
-  );
-}
 
 function formatDateTime(dateStr: string): string {
   try {
@@ -198,6 +189,12 @@ function getActionBadgeConfig(action: string): {
         bg: "bg-emerald-100 dark:bg-emerald-900/40",
         text: "text-emerald-800 dark:text-emerald-300",
         label: "Connexion",
+      };
+    case "LOGIN_FAILED":
+      return {
+        bg: "bg-red-100 dark:bg-red-900/40",
+        text: "text-red-800 dark:text-red-300",
+        label: "Tentative échouée",
       };
     case "LOGOUT":
       return {
@@ -261,7 +258,7 @@ function getEntityLabel(entity: string): string {
 
 export function AuditLogsSection() {
   const { data: session } = useSession();
-  const canRead = hasAuditPermission(session?.user?.roles);
+  const canRead = checkPermission(session?.user?.roles ?? [], "audit:read");
 
   // ─── List state ─────────────────────────────────────────────────────
   const [logs, setLogs] = useState<AuditLog[]>([]);

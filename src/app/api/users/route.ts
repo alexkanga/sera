@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { createUserSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
 
 // GET /api/users — Liste des utilisateurs (pas les archivés par défaut)
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createUserSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     // Vérifier si l'email existe déjà
     const existingUser = await db.user.findUnique({
@@ -164,6 +166,20 @@ export async function POST(request: NextRequest) {
     }
 
     const hashedPassword = await hash(validated.password, 12);
+
+    // Valider que les roleIds existent et sont actifs
+    if (validated.roleIds.length > 0) {
+      const validRoles = await db.role.findMany({
+        where: { id: { in: validated.roleIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (validRoles.length !== validated.roleIds.length) {
+        return NextResponse.json(
+          { error: "Un ou plusieurs rôles sont invalides ou archivés" },
+          { status: 400 }
+        );
+      }
+    }
 
     // Use create with include to avoid double query (fix 1.10)
     const createdUser = await db.user.create({
@@ -210,6 +226,8 @@ export async function POST(request: NextRequest) {
           roleIds: validated.roleIds,
         }),
         details: `Création de l'utilisateur ${createdUser.name} (${createdUser.email})`,
+        ipAddress,
+        userAgent,
       },
     });
 

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { createRoleSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const createRoleSchema = z.object({
-  code: z.string().min(2, "Le code doit contenir au moins 2 caractères"),
-  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
-  description: z.string().optional().nullable(),
-  permissionIds: z.array(z.string()).optional().default([]),
-});
 
 // GET /api/roles — Liste des rôles
 export async function GET(request: NextRequest) {
@@ -88,6 +83,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createRoleSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const existingRole = await db.role.findUnique({
       where: { code: validated.code },
@@ -97,6 +93,20 @@ export async function POST(request: NextRequest) {
         { error: "Un rôle avec ce code existe déjà" },
         { status: 409 }
       );
+    }
+
+    // Valider que les permissionIds existent et sont actifs
+    if (validated.permissionIds.length > 0) {
+      const validPermissions = await db.permission.findMany({
+        where: { id: { in: validated.permissionIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (validPermissions.length !== validated.permissionIds.length) {
+        return NextResponse.json(
+          { error: "Une ou plusieurs permissions sont invalides ou archivées" },
+          { status: 400 }
+        );
+      }
     }
 
     // Use create with include to avoid double query (fix 1.10)
@@ -129,6 +139,8 @@ export async function POST(request: NextRequest) {
           permissionIds: validated.permissionIds,
         }),
         details: `Création du rôle ${createdRole.name} (${createdRole.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { createPermissionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const createPermissionSchema = z.object({
-  code: z.string().min(3, "Le code doit contenir au moins 3 caractères"),
-  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
-  module: z.string().min(2, "Le module est requis"),
-  description: z.string().optional().nullable(),
-});
 
 // GET /api/permissions — Liste des permissions
 export async function GET(request: NextRequest) {
@@ -86,6 +81,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createPermissionSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const existing = await db.permission.findUnique({
       where: { code: validated.code },
@@ -109,6 +105,8 @@ export async function POST(request: NextRequest) {
         entityId: permission.id,
         newValue: JSON.stringify(validated),
         details: `Création de la permission ${permission.name} (${permission.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 

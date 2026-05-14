@@ -2,21 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { updateUserSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updateUserSchema = z.object({
-  name: z.string().min(2).optional(),
-  email: z.string().email().optional(),
-  ptaCode: z.string().optional().nullable(),
-  position: z.string().optional().nullable(),
-  department: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  avatar: z.string().optional().nullable(),
-  isActive: z.boolean().optional(),
-  isLocked: z.boolean().optional(),
-  password: z.string().min(6).optional(),
-  roleIds: z.array(z.string()).optional(),
-});
 
 // GET /api/users/[id] — Détail d'un utilisateur
 export async function GET(
@@ -113,6 +101,7 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     // Si c'est l'utilisateur lui-même, restreindre les champs modifiables
     if (!hasAccess) {
@@ -144,6 +133,20 @@ export async function PUT(
       const ptaExists = await db.user.findUnique({ where: { ptaCode: validated.ptaCode } });
       if (ptaExists) {
         return NextResponse.json({ error: "Ce code PTA est déjà utilisé" }, { status: 409 });
+      }
+    }
+
+    // Valider que les roleIds existent et sont actifs
+    if (validated.roleIds && validated.roleIds.length > 0) {
+      const validRoles = await db.role.findMany({
+        where: { id: { in: validated.roleIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (validRoles.length !== validated.roleIds.length) {
+        return NextResponse.json(
+          { error: "Un ou plusieurs rôles sont invalides ou archivés" },
+          { status: 400 }
+        );
       }
     }
 
@@ -194,6 +197,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(updateData),
         details: `Mise à jour de l'utilisateur ${updatedUser.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -256,6 +261,7 @@ export async function PATCH(
 
     const body = await request.json();
     const { action } = body as { action: "archive" | "restore" };
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
       const updatedUser = await db.user.update({
@@ -272,6 +278,8 @@ export async function PATCH(
           oldValue: JSON.stringify({ isActive: true, deletedAt: null }),
           newValue: JSON.stringify({ isActive: false, deletedAt: updatedUser.deletedAt }),
           details: `Archive de l'utilisateur ${existingUser.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
@@ -291,6 +299,8 @@ export async function PATCH(
           oldValue: JSON.stringify({ isActive: false, deletedAt: existingUser.deletedAt }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de l'utilisateur ${existingUser.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 

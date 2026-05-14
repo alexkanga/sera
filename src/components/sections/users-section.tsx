@@ -341,8 +341,10 @@ export function UsersSection() {
 
     if (!createForm.password.trim()) {
       errors.password = "Le mot de passe est requis";
-    } else if (createForm.password.length < 6) {
-      errors.password = "Minimum 6 caractères";
+    } else if (createForm.password.length < 8) {
+      errors.password = "Minimum 8 caractères";
+    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>\/?])/.test(createForm.password)) {
+      errors.password = "Doit contenir 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial";
     }
 
     if (!createForm.name.trim()) {
@@ -449,8 +451,10 @@ export function UsersSection() {
       errors.name = "Minimum 2 caractères";
     }
 
-    if (editForm.password && editForm.password.length < 6) {
-      errors.password = "Minimum 6 caractères";
+    if (editForm.password && editForm.password.length < 8) {
+      errors.password = "Minimum 8 caractères";
+    } else if (editForm.password && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>\/?])/.test(editForm.password)) {
+      errors.password = "Doit contenir 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial";
     }
 
     setEditFormErrors(errors);
@@ -1162,7 +1166,7 @@ export function UsersSection() {
                 <Input
                   id="create-password"
                   type="password"
-                  placeholder="Minimum 6 caractères"
+                  placeholder="Min. 8 car., 1 maj., 1 min., 1 chiffre, 1 spécial"
                   value={createForm.password}
                   onChange={(e) =>
                     setCreateForm((prev) => ({ ...prev, password: e.target.value }))

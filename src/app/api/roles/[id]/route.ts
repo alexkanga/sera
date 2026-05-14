@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { updateRoleSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updateRoleSchema = z.object({
-  name: z.string().min(2).optional(),
-  description: z.string().optional().nullable(),
-  permissionIds: z.array(z.string()).optional(),
-});
 
 // GET /api/roles/[id] — Détail d'un rôle
 export async function GET(
@@ -106,6 +102,7 @@ export async function PUT(
 
     const body = await request.json();
     const validated = updateRoleSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const updateData: Record<string, unknown> = {};
     if (validated.name !== undefined) updateData.name = validated.name;
@@ -118,6 +115,20 @@ export async function PUT(
 
     // Mettre à jour les permissions
     if (validated.permissionIds !== undefined) {
+      // Valider que les permissionIds existent et sont actifs
+      if (validated.permissionIds.length > 0) {
+        const validPermissions = await db.permission.findMany({
+          where: { id: { in: validated.permissionIds }, isActive: true, deletedAt: null },
+          select: { id: true },
+        });
+        if (validPermissions.length !== validated.permissionIds.length) {
+          return NextResponse.json(
+            { error: "Une ou plusieurs permissions sont invalides ou archivées" },
+            { status: 400 }
+          );
+        }
+      }
+
       await db.rolePermission.deleteMany({ where: { roleId: id } });
       if (validated.permissionIds.length > 0) {
         await db.rolePermission.createMany({
@@ -142,6 +153,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(validated),
         details: `Mise à jour du rôle ${updatedRole.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -196,6 +209,7 @@ export async function PATCH(
 
     const body = await request.json();
     const { action } = body as { action: "archive" | "restore" };
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
       await db.role.update({
@@ -210,6 +224,8 @@ export async function PATCH(
           entity: "Role",
           entityId: id,
           details: `Archive du rôle ${existingRole.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
@@ -227,6 +243,8 @@ export async function PATCH(
           entity: "Role",
           entityId: id,
           details: `Restauration du rôle ${existingRole.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 

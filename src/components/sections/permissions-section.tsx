@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useHasPermission } from "@/lib/client-permissions";
+import { getModuleLabel, MODULE_OPTIONS, MODULE_LABELS } from "@/lib/module-labels";
 import { toast } from "sonner";
 import {
   Key,
@@ -89,35 +90,7 @@ function useUserPermissions() {
   };
 }
 
-// ─── Module options for create form ──────────────────────────────────────────
-
-const MODULE_OPTIONS = [
-  { value: "auth", label: "Authentification" },
-  { value: "org", label: "Organisation" },
-  { value: "strategic", label: "Stratégie" },
-  { value: "acbf", label: "ACBF" },
-  { value: "pta", label: "PTA" },
-  { value: "raci", label: "RACI" },
-  { value: "gantt", label: "Gantt" },
-  { value: "dashboard", label: "Tableau de bord" },
-  { value: "docs", label: "Documents" },
-  { value: "reports", label: "Rapports" },
-  { value: "notifications", label: "Notifications" },
-  { value: "audit", label: "Audit" },
-  { value: "import", label: "Import" },
-  { value: "export", label: "Export" },
-];
-
-const MODULE_LABELS: Record<string, string> = {};
-MODULE_OPTIONS.forEach((m) => {
-  MODULE_LABELS[m.value] = m.label;
-});
-
-function getModuleLabel(module: string): string {
-  return MODULE_LABELS[module] || module.charAt(0).toUpperCase() + module.slice(1);
-}
-
-// Module icon/color mapping
+// ─── Module icon/color mapping ──────────────────────────────────────────────
 const MODULE_COLORS: Record<string, string> = {
   auth: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400",
   org: "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-400",

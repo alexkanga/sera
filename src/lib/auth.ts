@@ -171,6 +171,7 @@ export const authOptions: NextAuthOptions = {
           position: user.position,
           department: user.department,
           avatar: user.avatar,
+          passwordChangedAt: user.passwordChangedAt?.toISOString() ?? null,
           roles: user.roles.map((ur) => ({
             id: ur.role.id,
             code: ur.role.code,
@@ -189,7 +190,27 @@ export const authOptions: NextAuthOptions = {
         token.position = user.position;
         token.department = user.department;
         token.roles = user.roles;
+        token.passwordChangedAt = user.passwordChangedAt;
       }
+
+      // Invalidate session if password was changed after the token was issued
+      if (token.id) {
+        const dbUser = await db.user.findUnique({
+          where: { id: token.id as string },
+          select: { passwordChangedAt: true },
+        });
+        if (dbUser?.passwordChangedAt) {
+          const dbTime = dbUser.passwordChangedAt.getTime();
+          const tokenTime = token.passwordChangedAt
+            ? new Date(token.passwordChangedAt as string).getTime()
+            : 0;
+          if (dbTime > tokenTime) {
+            // Password was changed after this token was issued — force re-login
+            return { ...token, error: "PasswordChanged" } as typeof token;
+          }
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -204,6 +225,10 @@ export const authOptions: NextAuthOptions = {
           name: string;
           permissions: string[];
         }>;
+      }
+      // If password was changed, force sign out by adding error flag
+      if ((token as Record<string, unknown>).error === "PasswordChanged") {
+        (session as Record<string, unknown>).error = "PasswordChanged";
       }
       return session;
     },

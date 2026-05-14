@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useHasPermission } from "@/lib/client-permissions";
+import { getModuleLabel, MODULE_LABELS } from "@/lib/module-labels";
 import { toast } from "sonner";
 import {
   Shield,
@@ -106,29 +107,6 @@ function useUserPermissions() {
     canArchive: has("roles:archive"),
     canReadPermissions: has("permissions:read"),
   };
-}
-
-// ─── Module label mapping ────────────────────────────────────────────────────
-
-const MODULE_LABELS: Record<string, string> = {
-  auth: "Authentification",
-  org: "Organisation",
-  strategic: "Stratégie",
-  acbf: "ACBF",
-  pta: "PTA",
-  raci: "RACI",
-  gantt: "Gantt",
-  dashboard: "Tableau de bord",
-  docs: "Documents",
-  reports: "Rapports",
-  notifications: "Notifications",
-  audit: "Audit",
-  import: "Import",
-  export: "Export",
-};
-
-function getModuleLabel(module: string): string {
-  return MODULE_LABELS[module] || module.charAt(0).toUpperCase() + module.slice(1);
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────

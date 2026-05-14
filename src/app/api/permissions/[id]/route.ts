@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { updatePermissionSchema, archivePermissionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updatePermissionSchema = z.object({
-  name: z.string().min(2).optional(),
-  description: z.string().optional().nullable(),
-});
-
-const archivePermissionSchema = z.object({
-  action: z.enum(["archive", "restore"]),
-});
 
 // GET /api/permissions/[id]
 export async function GET(
@@ -68,6 +61,7 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     const validated = updatePermissionSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const existing = await db.permission.findUnique({ where: { id } });
     if (!existing) {
@@ -88,6 +82,8 @@ export async function PUT(
         oldValue: JSON.stringify({ name: existing.name, description: existing.description }),
         newValue: JSON.stringify(validated),
         details: `Mise à jour de la permission ${updated.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -123,6 +119,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const validated = archivePermissionSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const existing = await db.permission.findUnique({ where: { id } });
     if (!existing) {
@@ -165,6 +162,8 @@ export async function PATCH(
         details: isArchiving
           ? `Archivage de la permission ${updated.name} (${updated.code})`
           : `Restauration de la permission ${updated.name} (${updated.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 
