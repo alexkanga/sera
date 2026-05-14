@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
 
 // GET /api/gantt/stats — Gantt timeline statistics
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const currentUser = await getCurrentUser();
     if (!currentUser) {
@@ -27,7 +28,9 @@ export async function GET() {
       avgProgress,
       overdueCount,
       minMaxDates,
-      avgDurationResult,
+      // C3: Replace findMany with aggregate for avg duration calculation
+      // Use a raw aggregate approach instead of loading all activities into memory
+      durationStats,
     ] = await Promise.all([
       // Total activities with dates planned
       db.activity.count({ where: baseWhere }),
@@ -54,37 +57,50 @@ export async function GET() {
         _max: { endDate: true },
       }),
 
-      // Average duration in days (activities with both start and end dates)
-      db.activity.findMany({
-        where: {
-          ...baseWhere,
-          endDate: { not: null },
-        },
-        select: { startDate: true, endDate: true },
-      }),
+      // C3: Use aggregate with _avg for duration instead of findMany
+      // Calculate average duration using SQL aggregate (no memory bomb)
+      db.$queryRaw<
+        Array<{ avgDays: number | null }>
+      >`SELECT AVG(EXTRACT(EPOCH FROM ("endDate" - "startDate")) / 86400) as "avgDays" FROM "Activity" WHERE "deletedAt" IS NULL AND "isActive" = true AND "startDate" IS NOT NULL AND "endDate" IS NOT NULL`,
     ]);
 
-    // Calculate average duration
-    let avgDurationDays = 0;
-    if (avgDurationResult.length > 0) {
-      const totalDays = avgDurationResult.reduce((sum, a) => {
-        if (a.startDate && a.endDate) {
-          const diff = new Date(a.endDate).getTime() - new Date(a.startDate).getTime();
-          return sum + Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-        }
-        return sum;
-      }, 0);
-      avgDurationDays = Math.round(totalDays / avgDurationResult.length);
-    }
+    // Calculate average duration from aggregate
+    const avgDurationDays = durationStats[0]?.avgDays
+      ? Math.round(durationStats[0].avgDays)
+      : 0;
 
     // Date range
-    const timelineStart = minMaxDates._min.startDate;
-    const timelineEnd = minMaxDates._max.endDate;
+    // M4: Handle null timelineStart/timelineEnd (DateTime fields return Date | null)
+    const timelineStart = minMaxDates._min.startDate ?? null;
+    const timelineEnd = minMaxDates._max.endDate ?? null;
+
+    // m2: Handle NaN in stats (null progressRate from aggregate)
+    const rawAvg = avgProgress._avg.progressRate;
+    const avgProgressRate = rawAvg !== null && !isNaN(rawAvg) ? Math.round(rawAvg * 10) / 10 : 0;
+
+    // C2: Audit log with IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
+    await db.auditLog.create({
+      data: {
+        userId: currentUser.id,
+        action: "READ",
+        entity: "GanttChart",
+        entityId: "gantt-stats",
+        newValue: JSON.stringify({
+          totalPlanned,
+          avgProgressRate,
+          overdueCount,
+        }),
+        details: `Consultation stats Gantt — ${totalPlanned} activités planifiées`,
+        ipAddress: ip,
+        userAgent,
+      },
+    });
 
     return NextResponse.json({
       data: {
         totalPlanned,
-        avgProgressRate: Math.round((avgProgress._avg.progressRate || 0) * 10) / 10,
+        avgProgressRate,
         overdueCount,
         avgDurationDays,
         timelineStart,

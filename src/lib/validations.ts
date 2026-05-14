@@ -473,3 +473,14 @@ export const raciFormSchema = z.object({
 });
 
 export type RaciFormValues = z.infer<typeof raciFormSchema>;
+
+// ─── Gantt schemas (Module 9 — Gantt dynamique) ──────────────────────────
+
+export const ganttFilterSchema = z.object({
+  search: z.string().optional(),
+  directionId: z.string().optional(),
+  primaryAxisId: z.string().optional(),
+  status: z.string().optional(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
+  groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional(),
+});

@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { z } from "zod";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import { ganttFilterSchema } from "@/lib/validations";
 
 // ============================================================
 // GET /api/gantt — Activities for Gantt chart with filters
 // ============================================================
-
-const filterSchema = z.object({
-  search: z.string().optional(),
-  directionId: z.string().optional(),
-  primaryAxisId: z.string().optional(),
-  status: z.string().optional(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
-  groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional(),
-});
 
 // Common include for Gantt activities
 const ganttInclude = {
@@ -51,7 +43,7 @@ function getBaseWhere(): Record<string, unknown> {
 }
 
 // Build filter where clause
-function buildFilterWhere(params: z.infer<typeof filterSchema>): Record<string, unknown> {
+function buildFilterWhere(params: z.infer<typeof ganttFilterSchema>): Record<string, unknown> {
   const where: Record<string, unknown> = getBaseWhere();
 
   if (params.search) {
@@ -80,6 +72,8 @@ function buildFilterWhere(params: z.infer<typeof filterSchema>): Record<string, 
   return where;
 }
 
+import { z } from "zod";
+
 export async function GET(request: NextRequest) {
   try {
     const currentUser = await getCurrentUser();
@@ -94,7 +88,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
-    const parseResult = filterSchema.safeParse({
+    // C1: Use centralized ganttFilterSchema from validations.ts
+    const parseResult = ganttFilterSchema.safeParse({
       search: searchParams.get("search") || undefined,
       directionId: searchParams.get("directionId") || undefined,
       primaryAxisId: searchParams.get("primaryAxisId") || undefined,
@@ -123,56 +118,32 @@ export async function GET(request: NextRequest) {
       ],
     });
 
-    // Infer the activity type from Prisma's return
-    type GanttActivity = (typeof activities)[number];
+    // C2: Audit log with IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
+    await db.auditLog.create({
+      data: {
+        userId: currentUser.id,
+        action: "READ",
+        entity: "GanttChart",
+        entityId: "gantt-view",
+        newValue: JSON.stringify({
+          filterCount: activities.length,
+          filters: {
+            search: params.search || null,
+            directionId: params.directionId || null,
+            primaryAxisId: params.primaryAxisId || null,
+            status: params.status || null,
+            priority: params.priority || null,
+            groupBy: params.groupBy || null,
+          },
+        }),
+        details: `Consultation Gantt — ${activities.length} activités affichées`,
+        ipAddress: ip,
+        userAgent,
+      },
+    });
 
-    // If groupBy is specified, group activities
-    if (params.groupBy && params.groupBy !== "none") {
-      const groups = new Map<string, GanttActivity[]>();
-
-      activities.forEach((activity) => {
-        let key = "Non assigné";
-        switch (params.groupBy) {
-          case "direction":
-            key = activity.direction
-              ? `${activity.direction.code} — ${activity.direction.name}`
-              : "Non assigné";
-            break;
-          case "axis":
-            key = activity.primaryAxis
-              ? `${activity.primaryAxis.code} — ${activity.primaryAxis.name}`
-              : "Non assigné";
-            break;
-          case "responsible":
-            key = activity.responsible?.name || "Non assigné";
-            break;
-          case "status":
-            key = activity.status || "Non défini";
-            break;
-        }
-
-        if (!groups.has(key)) {
-          groups.set(key, []);
-        }
-        groups.get(key)!.push(activity);
-      });
-
-      const groupedData = Array.from(groups.entries()).map(([key, acts]) => ({
-        key,
-        label: key,
-        activities: acts,
-        avgProgress: acts.length > 0
-          ? Math.round((acts.reduce((sum, a) => sum + a.progressRate, 0) / acts.length) * 10) / 10
-          : 0,
-      }));
-
-      return NextResponse.json({
-        data: activities,
-        grouped: groupedData,
-        total: activities.length,
-      });
-    }
-
+    // E4: Remove unused backend grouping computation — frontend handles grouping locally
     return NextResponse.json({
       data: activities,
       total: activities.length,

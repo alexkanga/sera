@@ -16,12 +16,10 @@ import {
   TrendingUp,
   Clock,
   Search,
-  Filter,
   X,
   RefreshCw,
   Loader2,
   AlertCircle,
-  Eye,
   ShieldCheck,
   ChevronDown,
   ChevronRight,
@@ -31,7 +29,7 @@ import {
   ClipboardList,
   Building2,
 } from "lucide-react";
-import { format, differenceInDays, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfQuarter, endOfWeek as endOfQuarterWeek, eachMonthOfInterval, eachWeekOfInterval, eachDayOfInterval } from "date-fns";
+import { format, differenceInDays, addDays, startOfWeek, endOfWeek, eachMonthOfInterval, eachWeekOfInterval, eachDayOfInterval } from "date-fns";
 import { fr } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
@@ -70,6 +68,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { checkPermission } from "@/lib/client-permissions";
+import { PriorityBadge, ActivityStatusBadge } from "@/components/shared/activity-badges";
 
 // ============================================================
 // Types
@@ -161,7 +160,6 @@ type GroupBy = "none" | "direction" | "axis" | "responsible" | "status";
 const LEFT_PANEL_WIDTH = 300;
 const ROW_HEIGHT = 44;
 const HEADER_HEIGHT = 56;
-const TODAY = new Date();
 
 const ZOOM_CONFIG: Record<ZoomLevel, { columnWidth: number; label: string }> = {
   day: { columnWidth: 40, label: "Jour" },
@@ -202,9 +200,6 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 ];
 
 // ============================================================
-// Permission Helpers
-// ============================================================
-// ============================================================
 // Format Helpers
 // ============================================================
 
@@ -231,32 +226,9 @@ function getDaysBetween(start: string | null, end: string | null): number {
   return differenceInDays(new Date(end), new Date(start));
 }
 
-function getStatusBadge(status: string | null) {
-  if (!status) return null;
-  const colors = STATUS_COLORS[status];
-  if (!colors) {
-    return <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">{status}</Badge>;
-  }
-  return (
-    <Badge className={`text-[10px] ${colors.bg} ${colors.text} border-0`}>
-      {status}
-    </Badge>
-  );
-}
-
-function getPriorityBadge(priority: string | null) {
-  if (!priority) return null;
-  switch (priority) {
-    case "Haute":
-      return <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">Haute</Badge>;
-    case "Moyenne":
-      return <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">Moyenne</Badge>;
-    case "Basse":
-      return <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">Basse</Badge>;
-    default:
-      return <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">{priority}</Badge>;
-  }
-}
+// M1: Use shared badges from activity-badges.tsx for consistency
+// Local getStatusBadge uses STATUS_COLORS for Gantt bar styling (fill/bg/border), kept for bar rendering
+// For badge-only rendering, use shared components
 
 // ============================================================
 // Main Component
@@ -290,6 +262,13 @@ export function GanttSection() {
   const [zoom, setZoom] = useState<ZoomLevel>("month");
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  // ----- Search debounce (E2) -----
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // M2: TODAY should be computed per render, not at module level
+  const today = useMemo(() => new Date(), []);
 
   // ----- Group expansion -----
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -337,6 +316,17 @@ export function GanttSection() {
   }, [canRead, fetchStats, refreshKey]);
 
   // ============================================================
+  // Search Debounce (E2)
+  // ============================================================
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // ============================================================
   // Fetch Activities
   // ============================================================
 
@@ -345,7 +335,7 @@ export function GanttSection() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (directionFilter) params.set("directionId", directionFilter);
       if (axisFilter) params.set("primaryAxisId", axisFilter);
       if (statusFilter) params.set("status", statusFilter);
@@ -365,7 +355,7 @@ export function GanttSection() {
     } finally {
       setLoading(false);
     }
-  }, [search, directionFilter, axisFilter, statusFilter, priorityFilter, groupBy]);
+  }, [debouncedSearch, directionFilter, axisFilter, statusFilter, priorityFilter, groupBy]);
 
   useEffect(() => {
     if (canRead) fetchActivities();
@@ -435,15 +425,16 @@ export function GanttSection() {
   const timelineRange = useMemo(() => {
     if (filteredActivities.length === 0) {
       // Default: current year
-      const yearStart = new Date(TODAY.getFullYear(), 0, 1);
-      const yearEnd = new Date(TODAY.getFullYear(), 11, 31);
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      const yearEnd = new Date(today.getFullYear(), 11, 31);
       return { start: yearStart, end: yearEnd };
     }
 
     let minDate = new Date(filteredActivities[0].startDate!);
     let maxDate = new Date(filteredActivities[0].startDate!);
 
-    filteredActivities.forEach((a) => {
+    // E1: Replace forEach with for...of
+    for (const a of filteredActivities) {
       if (a.startDate) {
         const s = new Date(a.startDate);
         if (s < minDate) minDate = s;
@@ -452,11 +443,10 @@ export function GanttSection() {
         const e = new Date(a.endDate);
         if (e > maxDate) maxDate = e;
       } else if (a.startDate) {
-        // If no end date, use start date + 7 days
         const e = addDays(new Date(a.startDate), 7);
         if (e > maxDate) maxDate = e;
       }
-    });
+    }
 
     // Add padding
     const padDays = zoom === "day" ? 7 : zoom === "week" ? 14 : 30;
@@ -464,11 +454,11 @@ export function GanttSection() {
     maxDate = addDays(maxDate, padDays);
 
     // Ensure today is visible
-    if (TODAY < minDate) minDate = addDays(TODAY, -padDays);
-    if (TODAY > maxDate) maxDate = addDays(TODAY, padDays);
+    if (today < minDate) minDate = addDays(today, -padDays);
+    if (today > maxDate) maxDate = addDays(today, padDays);
 
     return { start: minDate, end: maxDate };
-  }, [filteredActivities, zoom]);
+  }, [filteredActivities, zoom, today]);
 
   // ============================================================
   // Computed: Timeline Columns (headers)
@@ -487,7 +477,7 @@ export function GanttSection() {
           subLabel: format(day, "EEE", { locale: fr }),
           width: colWidth,
           isWeekend: day.getDay() === 0 || day.getDay() === 6,
-          isToday: format(day, "yyyy-MM-dd") === format(TODAY, "yyyy-MM-dd"),
+          isToday: format(day, "yyyy-MM-dd") === format(today, "yyyy-MM-dd"),
         }));
       }
       case "week": {
@@ -499,8 +489,8 @@ export function GanttSection() {
           width: colWidth,
           isWeekend: false,
           isToday:
-            TODAY >= startOfWeek(week, { weekStartsOn: 1 }) &&
-            TODAY <= endOfWeek(week, { weekStartsOn: 1 }),
+            today >= startOfWeek(week, { weekStartsOn: 1 }) &&
+            today <= endOfWeek(week, { weekStartsOn: 1 }),
         }));
       }
       case "month": {
@@ -512,8 +502,8 @@ export function GanttSection() {
           width: colWidth,
           isWeekend: false,
           isToday:
-            TODAY.getMonth() === month.getMonth() &&
-            TODAY.getFullYear() === month.getFullYear(),
+            today.getMonth() === month.getMonth() &&
+            today.getFullYear() === month.getFullYear(),
         }));
       }
       case "quarter": {
@@ -543,8 +533,8 @@ export function GanttSection() {
                 width: colWidth,
                 isWeekend: false,
                 isToday:
-                  Math.floor(TODAY.getMonth() / 3) === Math.floor(quarterStart.getMonth() / 3) &&
-                  TODAY.getFullYear() === quarterStart.getFullYear(),
+                  Math.floor(today.getMonth() / 3) === Math.floor(quarterStart.getMonth() / 3) &&
+                  today.getFullYear() === quarterStart.getFullYear(),
               });
             }
             currentQuarter = q;
@@ -564,15 +554,15 @@ export function GanttSection() {
             width: colWidth,
             isWeekend: false,
             isToday:
-              Math.floor(TODAY.getMonth() / 3) === Math.floor(quarterStart.getMonth() / 3) &&
-              TODAY.getFullYear() === quarterStart.getFullYear(),
+              Math.floor(today.getMonth() / 3) === Math.floor(quarterStart.getMonth() / 3) &&
+              today.getFullYear() === quarterStart.getFullYear(),
           });
         }
 
         return quarters;
       }
     }
-  }, [timelineRange, zoom]);
+  }, [timelineRange, zoom, today]);
 
   // ============================================================
   // Computed: Total timeline width
@@ -618,9 +608,9 @@ export function GanttSection() {
     const { start } = timelineRange;
     const totalDays = differenceInDays(timelineRange.end, start);
     if (totalDays <= 0) return 0;
-    const todayOffset = differenceInDays(TODAY, start);
+    const todayOffset = differenceInDays(today, start);
     return (todayOffset / totalDays) * totalWidth;
-  }, [timelineRange, totalWidth]);
+  }, [timelineRange, totalWidth, today]);
 
   // ============================================================
   // Grouping
@@ -631,7 +621,8 @@ export function GanttSection() {
 
     const groups = new Map<string, Activity[]>();
 
-    filteredActivities.forEach((activity) => {
+    // E1: Replace forEach with for...of
+    for (const activity of filteredActivities) {
       let key = "Non assigné";
       switch (groupBy) {
         case "direction":
@@ -656,7 +647,7 @@ export function GanttSection() {
         groups.set(key, []);
       }
       groups.get(key)!.push(activity);
-    });
+    }
 
     return Array.from(groups.entries()).map(([key, acts]) => ({
       key,
@@ -697,15 +688,25 @@ export function GanttSection() {
   async function handleView(activity: Activity) {
     setSelectedActivity(activity);
     setViewDialogOpen(true);
+    setViewLoading(true);
 
     try {
       const res = await fetch(`/api/activities/${activity.id}`);
+      // m3: Handle 404 case (activity could have been deleted)
+      if (res.status === 404) {
+        setViewDialogOpen(false);
+        toast.error("Cette activité n'existe plus. Elle a peut-être été supprimée.");
+        handleRefresh();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setSelectedActivity((prev) => prev ? { ...prev, ...data.data } : prev);
       }
     } catch {
       // Keep existing data
+    } finally {
+      setViewLoading(false);
     }
   }
 
@@ -843,7 +844,7 @@ export function GanttSection() {
           </span>
         </div>
         <div className="shrink-0 px-2">
-          {getStatusBadge(activity.status)}
+          <ActivityStatusBadge status={activity.status} />
         </div>
       </div>
     );
@@ -979,7 +980,7 @@ export function GanttSection() {
                 {activity.title}
               </h4>
             </div>
-            <div className="shrink-0">{getStatusBadge(activity.status)}</div>
+            <div className="shrink-0"><ActivityStatusBadge status={activity.status} /></div>
           </div>
 
           {/* Mini timeline bar */}
@@ -1023,6 +1024,15 @@ export function GanttSection() {
             </DialogTitle>
           </DialogHeader>
 
+          {/* E3: Loading spinner while fetching details */}
+          {viewLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+              <span className="ml-2 text-sm text-muted-foreground">Chargement des détails…</span>
+            </div>
+          )}
+
+          {!viewLoading && (
           <ScrollArea className="max-h-[65vh] pr-2">
             <div className="space-y-5 py-2">
               {/* Identification */}
@@ -1033,10 +1043,10 @@ export function GanttSection() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
                   <div><span className="text-muted-foreground">Code :</span> <span className="font-medium">{a.activityCode}</span></div>
-                  <div><span className="text-muted-foreground">Priorité :</span> {getPriorityBadge(a.priority)}</div>
+                  <div><span className="text-muted-foreground">Priorité :</span> <PriorityBadge priority={a.priority} /></div>
                   <div className="sm:col-span-2"><span className="text-muted-foreground">Titre :</span> <span className="font-medium">{a.title}</span></div>
                   <div><span className="text-muted-foreground">Nature :</span> <span>{a.nature || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Statut :</span> {getStatusBadge(a.status)}</div>
+                  <div><span className="text-muted-foreground">Statut :</span> <ActivityStatusBadge status={a.status} /></div>
                   <div><span className="text-muted-foreground">Validation :</span> <span>{a.validationStatus}</span></div>
                 </div>
               </div>
@@ -1127,6 +1137,7 @@ export function GanttSection() {
               )}
             </div>
           </ScrollArea>
+          )}
         </DialogContent>
       </Dialog>
     );
@@ -1316,7 +1327,7 @@ export function GanttSection() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+                <Search className="h-4 w-4 text-slate-400 shrink-0" />
                 <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Regroupement" />
