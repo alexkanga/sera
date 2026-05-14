@@ -1351,3 +1351,170 @@ Stage Summary:
 - Code quality improvements: centralized validation schemas, shared module labels, consistent permission checking
 - Prisma schema updated with passwordChangedAt field
 - Awaiting authorization to push to GitHub
+
+---
+Task ID: 1
+Agent: Module 2 Critical Fixes Agent
+Task: Module 2 — Critical Fixes (Permission Mismatch, OrgOverview Permissions, Cascade Archive)
+
+Work Log:
+- Read worklog.md for project context and all relevant file contents ✅
+- Fix 2.1 — Permission mismatch: Frontend uses directions:*/units:* but backend uses org:* ✅
+  - Updated `src/components/sections/directions-section.tsx`: Changed `directions:read` → `org:read`, `directions:create` → `org:create`, `directions:update` → `org:update`, `directions:archive` → `org:archive`
+  - Updated `src/components/sections/units-section.tsx`: Changed `units:read` → `org:read`, `units:create` → `org:create`, `units:update` → `org:update`, `units:archive` → `org:archive`
+- Fix 2.2 — OrgOverviewSection has NO permission check ✅
+  - Added `import { useSession } from "next-auth/react"` and `import { checkPermission } from "@/lib/client-permissions"`
+  - Added `const { data: session } = useSession()` and `const canRead = checkPermission(session?.user?.roles ?? [], "org:read")`
+  - Added permission denied block BEFORE loading block (matches directions-section.tsx pattern)
+  - Wrapped fetchData useEffect with `if (!canRead) return` guard
+- Fix 2.3 — Archive of Direction does NOT cascade to Units ✅
+  - Updated `src/app/api/directions/[id]/route.ts` PATCH handler:
+    - Added cascade archive: `db.unit.updateMany({ where: { directionId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } })`
+    - Added cascade restore: `db.unit.updateMany({ where: { directionId: id, deletedAt: { not: null } }, data: { deletedAt: null, isActive: true } })`
+  - Updated `src/app/api/units/route.ts` POST handler:
+    - Added `direction.deletedAt` check after direction existence check, returns 400 error
+  - Updated `src/app/api/units/[id]/route.ts` PUT handler:
+    - Added `direction.deletedAt` check after direction existence check in the directionId change block, returns 400 error
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- 3 critical fixes applied to Module 2
+- Permission alignment: All Module 2 frontend sections now use org:* permissions matching backend/middleware
+- OrgOverviewSection now properly checks org:read permission and shows "Accès refusé" when unauthorized
+- Cascade archive/restore: Archiving a direction now archives all its active units; restoring restores all units
+- Referential integrity: Cannot create or move units to archived directions (POST and PUT both check direction.deletedAt)
+- All changes pass lint with zero errors
+
+---
+Task ID: 2
+Agent: Module 2 HIGH Fixes Agent
+Task: Module 2 — HIGH severity fixes (2.4, 2.5, 2.6, 2.7, 2.8)
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read all 4 Module 2 route files and audit-utils.ts and validations.ts ✅
+
+**Fix 2.4 — Audit logs without IP or User-Agent:**
+- `directions/route.ts` POST: Added `getIpAndUserAgent(request)` + `ipAddress`/`userAgent` to auditLog.create ✅
+- `directions/[id]/route.ts` PUT: Added IP/UA to auditLog.create ✅
+- `directions/[id]/route.ts` PATCH (archive): Added IP/UA to auditLog.create ✅
+- `directions/[id]/route.ts` PATCH (restore): Added IP/UA to auditLog.create ✅
+- `units/route.ts` POST: Added IP/UA to auditLog.create ✅
+- `units/[id]/route.ts` PUT: Added IP/UA to auditLog.create ✅
+- `units/[id]/route.ts` PATCH (archive): Added IP/UA to auditLog.create ✅
+- `units/[id]/route.ts` PATCH (restore): Added IP/UA to auditLog.create ✅
+- Total: 8 audit log creates across 4 routes, all now include ipAddress and userAgent ✅
+
+**Fix 2.5 — Archive action validation uses unsafe type assertion:**
+- `directions/[id]/route.ts` PATCH: Replaced `body as { action: "archive" | "restore" }` with `archivePermissionSchema.parse(body)` ✅
+- `units/[id]/route.ts` PATCH: Replaced `body as { action: "archive" | "restore" }` with `archivePermissionSchema.parse(body)` ✅
+- Removed final `return NextResponse.json({ error: "Action invalide..." })` from both PATCH handlers ✅
+- Added ZodError catch block to both PATCH handlers (returns 400 with error.issues) ✅
+
+**Fix 2.6 — Backend validation much weaker than frontend:**
+- Added centralized schemas to `validations.ts`:
+  - `orgCodeField`: min(1), max(20), regex(/^[A-Z0-9_]+$/)
+  - `orgNameField`: min(2), max(200)
+  - `orgDescriptionField`: max(1000), optional, nullable
+  - `createDirectionSchema`, `updateDirectionSchema` (with refine for at-least-one-field)
+  - `createUnitSchema`, `updateUnitSchema` (with refine for at-least-one-field)
+- Replaced inline schemas in all 4 route files:
+  - `directions/route.ts`: Removed local `createDirectionSchema`, imported from validations ✅
+  - `directions/[id]/route.ts`: Removed local `updateDirectionSchema`, imported from validations ✅
+  - `units/route.ts`: Removed local `createUnitSchema`, imported from validations ✅
+  - `units/[id]/route.ts`: Removed local `updateUnitSchema`, imported from validations ✅
+
+**Fix 2.7 — Missing headUserId validation in Unit routes:**
+- `units/route.ts` POST: Added headUserId existence check after direction check ✅
+- `units/[id]/route.ts` PUT: Added headUserId existence check after direction check ✅
+
+**Fix 2.8 — Case-insensitive search inconsistency:**
+- `directions/route.ts` GET: Changed `{ contains: search }` to `{ contains: search, mode: "insensitive" }` for both name and code fields ✅
+- Now consistent with units/route.ts which already used `mode: "insensitive"` ✅
+
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- All 5 HIGH severity fixes for Module 2 implemented
+- Audit logs now capture IP address and User-Agent in all 8 audit events across 4 routes
+- Archive/restore actions validated with Zod `archivePermissionSchema` instead of unsafe type assertions
+- Backend validation schemas centralized in validations.ts matching frontend strictness (max lengths, regex patterns)
+- headUserId existence check added to units POST and PUT handlers
+- Directions search now case-insensitive (consistent with units search)
+
+---
+Task ID: 3
+Agent: Module 2 MEDIUM Fixes Agent
+Task: Module 2 — MEDIUM Severity Fixes (2.9–2.14)
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read all target files to understand current state ✅
+- **Fix 2.9 — Pagination parameters validation** ✅
+  - Updated `src/app/api/directions/route.ts`: replaced `parseInt` with clamped values (page ≥ 1, limit 1–100, NaN defaults)
+  - Updated `src/app/api/units/route.ts`: same pagination clamping applied
+- **Fix 2.10 — Empty update ZodError handling** ✅ (verified already done by previous agent)
+  - Both PUT handlers in `directions/[id]` and `units/[id]` already catch `z.ZodError` and return 400 with `error.issues`
+  - `updateDirectionSchema` and `updateUnitSchema` in validations.ts already have `.refine()` for at-least-one-field check
+- **Fix 2.11 — OrgOverviewSection permission check** ✅ (verified already done by previous agent)
+  - Already imports `checkPermission` from `@/lib/client-permissions` and uses `org:read`
+- **Fix 2.12 — Code duplication reduction** ✅
+  - Created `src/components/shared/org-shared.tsx` with `PaginationControls` and `StatusBadge` components
+  - Updated `src/components/sections/directions-section.tsx`: imports and uses `<StatusBadge>` and `<PaginationControls>`, removed ChevronLeft/ChevronRight imports
+  - Updated `src/components/sections/units-section.tsx`: same refactoring applied
+- **Fix 2.13 — Dynamic color palette** ✅
+  - Replaced hardcoded `DIRECTION_COLORS` (3 entries) with `COLOR_PALETTE` (6 colors: emerald, amber, violet, sky, rose, teal) in `org-overview-section.tsx`
+  - Changed `getDirectionColor(code)` → `getDirectionColor(index)` using modulo cycling
+  - Updated `.map()` call to include index parameter
+- **Fix 2.14 — Strict member matching** ✅
+  - Replaced `u.department.includes(direction.code)` with exact comparisons in `org-overview-section.tsx`
+  - Now checks: `=== direction.name`, `=== direction.code`, `=== direction.code.toLowerCase()`, `=== direction.name.toLowerCase()`
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- 6 MEDIUM fixes applied to Module 2 (fixes 2.9–2.14)
+- Backend: pagination parameter validation clamped in both directions and units GET routes
+- Frontend: shared PaginationControls and StatusBadge components reduce duplication across directions/units sections
+- Org overview: auto-cycling 6-color palette replaces hardcoded 3-direction color map
+- Org overview: strict department matching prevents false positives (e.g., "INDEX" no longer matches "DEX")
+- Fixes 2.10 and 2.11 verified as already implemented by previous agent
+
+---
+Task ID: 4
+Agent: Module 2 MINOR Fixes Agent
+Task: Module 2 MINOR severity fixes (2.15, 2.16, 2.17)
+
+Work Log:
+- Read worklog.md for project context and previous agent work ✅
+- Read org-overview-section.tsx, validations.ts, and all 4 API route files ✅
+
+**2.15 — totalMembers and activeMembers identical**
+- Fixed: Changed `const totalMembers = users.filter((u) => u.isActive).length` to `const totalMembers = users.length`
+- `activeMembers` remains `users.filter((u) => u.isActive).length` — now correctly different from totalMembers ✅
+
+**2.16 — Zod schemas duplicated between API routes**
+- Verified all 4 route files already import from centralized `@/lib/validations`:
+  - `/api/directions/route.ts` → `import { createDirectionSchema } from "@/lib/validations"` ✅
+  - `/api/directions/[id]/route.ts` → `import { updateDirectionSchema, archivePermissionSchema } from "@/lib/validations"` ✅
+  - `/api/units/route.ts` → `import { createUnitSchema } from "@/lib/validations"` ✅
+  - `/api/units/[id]/route.ts` → `import { updateUnitSchema, archivePermissionSchema } from "@/lib/validations"` ✅
+- No inline schemas remain in any route file. Previous HIGH fix agent (2.6) already completed this ✅
+
+**2.17 — window.location.reload() replaced with refreshKey pattern**
+- Added state: `const [refreshKey, setRefreshKey] = useState(0);`
+- Added `refreshKey` to useEffect dependency array: `[canRead, refreshKey]`
+- Replaced `onClick={() => window.location.reload()}` with `onClick={() => setRefreshKey((k) => k + 1)}`
+- Error retry button now triggers data refetch without full page reload ✅
+
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- 3 MINOR fixes applied for Module 2
+- 2.15: totalMembers now correctly counts ALL users (not just active)
+- 2.16: Confirmed schemas already centralized — no changes needed
+- 2.17: Error retry uses refreshKey pattern instead of window.location.reload()
+- All fixes verified with lint and dev server

@@ -2,14 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
-
-const updateUnitSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  description: z.string().optional().nullable(),
-  directionId: z.string().min(1).optional(),
-  headUserId: z.string().optional().nullable(),
-});
+import { updateUnitSchema, archivePermissionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 
 // GET /api/units/[id] — Détail d'une unité
 export async function GET(
@@ -92,6 +86,8 @@ export async function PUT(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const { id } = await params;
 
     const existingUnit = await db.unit.findUnique({
@@ -138,6 +134,25 @@ export async function PUT(
           { status: 404 }
         );
       }
+      if (direction.deletedAt) {
+        return NextResponse.json(
+          { error: "Impossible de déplacer une unité vers une direction archivée" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Vérifier que le headUserId existe si fourni
+    if (validated.headUserId) {
+      const headUser = await db.user.findUnique({
+        where: { id: validated.headUserId },
+      });
+      if (!headUser) {
+        return NextResponse.json(
+          { error: "L'utilisateur responsable spécifié n'existe pas" },
+          { status: 400 }
+        );
+      }
     }
 
     const updateData: Record<string, unknown> = {};
@@ -172,6 +187,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(updateData),
         details: `Mise à jour de l'unité ${updatedUnit.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -230,6 +247,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const { id } = await params;
 
     const existingUnit = await db.unit.findUnique({ where: { id } });
@@ -238,7 +257,8 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+    const validated = archivePermissionSchema.parse(body);
+    const { action } = validated;
 
     if (action === "archive") {
       const updatedUnit = await db.unit.update({
@@ -255,6 +275,8 @@ export async function PATCH(
           oldValue: JSON.stringify({ isActive: true, deletedAt: null }),
           newValue: JSON.stringify({ isActive: false, deletedAt: updatedUnit.deletedAt }),
           details: `Archive de l'unité ${existingUnit.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
@@ -274,17 +296,20 @@ export async function PATCH(
           oldValue: JSON.stringify({ isActive: false, deletedAt: existingUnit.deletedAt }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de l'unité ${existingUnit.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, restored: true } });
     }
-
-    return NextResponse.json(
-      { error: "Action invalide. Utilisez 'archive' ou 'restore'" },
-      { status: 400 }
-    );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/units/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

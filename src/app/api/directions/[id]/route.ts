@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
-
-const updateDirectionSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  description: z.string().optional().nullable(),
-  headUserId: z.string().optional().nullable(),
-});
+import { updateDirectionSchema, archivePermissionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 
 // GET /api/directions/[id] — Détail d'une direction
 export async function GET(
@@ -99,6 +94,8 @@ export async function PUT(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const { id } = await params;
 
     const existingDirection = await db.direction.findUnique({ where: { id } });
@@ -175,6 +172,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(updateData),
         details: `Mise à jour de la direction ${updatedDirection.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -225,6 +224,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const { id } = await params;
 
     const existingDirection = await db.direction.findUnique({ where: { id } });
@@ -236,11 +237,18 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+    const validated = archivePermissionSchema.parse(body);
+    const { action } = validated;
 
     if (action === "archive") {
       const updatedDirection = await db.direction.update({
         where: { id },
+        data: { deletedAt: new Date(), isActive: false },
+      });
+
+      // Cascade archive to all active units
+      await db.unit.updateMany({
+        where: { directionId: id, deletedAt: null },
         data: { deletedAt: new Date(), isActive: false },
       });
 
@@ -256,6 +264,8 @@ export async function PATCH(
             deletedAt: updatedDirection.deletedAt,
           }),
           details: `Archive de la direction ${existingDirection.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
@@ -263,6 +273,12 @@ export async function PATCH(
     } else if (action === "restore") {
       const updatedDirection = await db.direction.update({
         where: { id },
+        data: { deletedAt: null, isActive: true },
+      });
+
+      // Cascade restore to units that were archived with this direction
+      await db.unit.updateMany({
+        where: { directionId: id, deletedAt: { not: null } },
         data: { deletedAt: null, isActive: true },
       });
 
@@ -278,17 +294,20 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de la direction ${existingDirection.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, restored: true } });
     }
-
-    return NextResponse.json(
-      { error: "Action invalide. Utilisez 'archive' ou 'restore'" },
-      { status: 400 }
-    );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/directions/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

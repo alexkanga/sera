@@ -90,3 +90,56 @@ export const updatePermissionSchema = z.object({
 export const archivePermissionSchema = z.object({
   action: z.enum(["archive", "restore"]),
 });
+
+// ─── Direction schemas (Module 2) ──────────────────────────────────────────
+
+const orgCodeField = z
+  .string()
+  .min(1, "Le code est requis")
+  .max(20, "Maximum 20 caractères")
+  .regex(/^[A-Z0-9_]+$/, "Code en majuscules, chiffres et _ uniquement");
+
+const orgNameField = z
+  .string()
+  .min(2, "Le nom doit contenir au moins 2 caractères")
+  .max(200, "Maximum 200 caractères");
+
+const orgDescriptionField = z
+  .string()
+  .max(1000, "Maximum 1000 caractères")
+  .optional()
+  .nullable();
+
+export const createDirectionSchema = z.object({
+  code: orgCodeField,
+  name: orgNameField,
+  description: orgDescriptionField,
+  headUserId: z.string().optional().nullable(),
+});
+
+export const updateDirectionSchema = z.object({
+  code: orgCodeField.optional(),
+  name: orgNameField.optional(),
+  description: orgDescriptionField,
+  headUserId: z.string().optional().nullable(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});
+
+export const createUnitSchema = z.object({
+  code: orgCodeField,
+  name: orgNameField,
+  description: orgDescriptionField,
+  directionId: z.string().min(1, "La direction est requise"),
+  headUserId: z.string().optional().nullable(),
+});
+
+export const updateUnitSchema = z.object({
+  code: orgCodeField.optional(),
+  name: orgNameField.optional(),
+  description: orgDescriptionField,
+  directionId: z.string().min(1, "La direction est requise").optional(),
+  headUserId: z.string().optional().nullable(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});

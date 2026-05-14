@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
-
-const createDirectionSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  description: z.string().optional().nullable(),
-  headUserId: z.string().optional().nullable(),
-});
+import { createDirectionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 
 // GET /api/directions — Liste des directions (pas les archivées par défaut)
 export async function GET(request: NextRequest) {
@@ -27,8 +22,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || ""; // "active", "archived", "all"
     const includeUnits = searchParams.get("includeUnits") === "true";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawPage = parseInt(searchParams.get("page") || "1");
+    const rawLimit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, isNaN(rawPage) ? 1 : rawPage);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -46,8 +43,8 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { code: { contains: search } },
+        { name: { contains: search, mode: "insensitive" } },
+        { code: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -148,6 +145,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const body = await request.json();
     const validated = createDirectionSchema.parse(body);
 
@@ -201,6 +200,8 @@ export async function POST(request: NextRequest) {
           headUserId: direction.headUserId,
         }),
         details: `Création de la direction ${direction.name} (${direction.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 

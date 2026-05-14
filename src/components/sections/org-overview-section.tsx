@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
   Building2,
@@ -40,6 +41,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -74,57 +76,68 @@ interface DirectionItem {
 }
 
 // ============================================================
-// Color Mapping for Directions
+// Color Palette for Directions (auto-cycled by index)
 // ============================================================
 
-const DIRECTION_COLORS: Record<
-  string,
+const COLOR_PALETTE = [
   {
-    bg: string;
-    bgLight: string;
-    border: string;
-    text: string;
-    badge: string;
-    icon: string;
-    hover: string;
-  }
-> = {
-  DEX: {
     bg: "bg-emerald-600",
     bgLight: "bg-emerald-50 dark:bg-emerald-900/30",
     border: "border-emerald-200 dark:border-emerald-800",
     text: "text-emerald-700 dark:text-emerald-400",
-    badge:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+    badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
     icon: "bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400",
     hover: "hover:border-emerald-400 dark:hover:border-emerald-600",
   },
-  DSMP: {
+  {
     bg: "bg-amber-600",
     bgLight: "bg-amber-50 dark:bg-amber-900/30",
     border: "border-amber-200 dark:border-amber-800",
     text: "text-amber-700 dark:text-amber-400",
-    badge:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200 dark:border-amber-800",
+    badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200 dark:border-amber-800",
     icon: "bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-400",
     hover: "hover:border-amber-400 dark:hover:border-amber-600",
   },
-  DAF: {
+  {
     bg: "bg-violet-600",
     bgLight: "bg-violet-50 dark:bg-violet-900/30",
     border: "border-violet-200 dark:border-violet-800",
     text: "text-violet-700 dark:text-violet-400",
-    badge:
-      "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-400 border-violet-200 dark:border-violet-800",
+    badge: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-400 border-violet-200 dark:border-violet-800",
     icon: "bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-400",
     hover: "hover:border-violet-400 dark:hover:border-violet-600",
   },
-};
+  {
+    bg: "bg-sky-600",
+    bgLight: "bg-sky-50 dark:bg-sky-900/30",
+    border: "border-sky-200 dark:border-sky-800",
+    text: "text-sky-700 dark:text-sky-400",
+    badge: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-400 border-sky-200 dark:border-sky-800",
+    icon: "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400",
+    hover: "hover:border-sky-400 dark:hover:border-sky-600",
+  },
+  {
+    bg: "bg-rose-600",
+    bgLight: "bg-rose-50 dark:bg-rose-900/30",
+    border: "border-rose-200 dark:border-rose-800",
+    text: "text-rose-700 dark:text-rose-400",
+    badge: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-400 border-rose-200 dark:border-rose-800",
+    icon: "bg-rose-100 dark:bg-rose-900 text-rose-600 dark:text-rose-400",
+    hover: "hover:border-rose-400 dark:hover:border-rose-600",
+  },
+  {
+    bg: "bg-teal-600",
+    bgLight: "bg-teal-50 dark:bg-teal-900/30",
+    border: "border-teal-200 dark:border-teal-800",
+    text: "text-teal-700 dark:text-teal-400",
+    badge: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-400 border-teal-200 dark:border-teal-800",
+    icon: "bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-400",
+    hover: "hover:border-teal-400 dark:hover:border-teal-600",
+  },
+];
 
-const DEFAULT_COLOR = DIRECTION_COLORS.DEX;
-
-function getDirectionColor(code: string) {
-  return DIRECTION_COLORS[code] || DEFAULT_COLOR;
+function getDirectionColor(index: number) {
+  return COLOR_PALETTE[index % COLOR_PALETTE.length];
 }
 
 // ============================================================
@@ -132,11 +145,15 @@ function getDirectionColor(code: string) {
 // ============================================================
 
 export function OrgOverviewSection() {
+  const { data: session } = useSession();
+  const canRead = checkPermission(session?.user?.roles ?? [], "org:read");
+
   // ----- Data state -----
   const [directions, setDirections] = useState<DirectionItem[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // ----- UI state -----
   const [expandedDirection, setExpandedDirection] = useState<string | null>(
@@ -151,6 +168,7 @@ export function OrgOverviewSection() {
   // ============================================================
 
   useEffect(() => {
+    if (!canRead) return;
     async function fetchData() {
       setLoading(true);
       setError(null);
@@ -187,7 +205,7 @@ export function OrgOverviewSection() {
       }
     }
     fetchData();
-  }, []);
+  }, [canRead, refreshKey]);
 
   // ============================================================
   // Computed Stats
@@ -198,7 +216,7 @@ export function OrgOverviewSection() {
     (sum, d) => sum + (d.units?.length ?? 0),
     0
   );
-  const totalMembers = users.filter((u) => u.isActive).length;
+  const totalMembers = users.length;
   const activeMembers = users.filter((u) => u.isActive).length;
 
   // Get members for a direction by matching user department to direction name/code
@@ -208,7 +226,8 @@ export function OrgOverviewSection() {
         u.department &&
         (u.department === direction.name ||
           u.department === direction.code ||
-          u.department.includes(direction.code))
+          u.department === direction.code.toLowerCase() ||
+          u.department === direction.name.toLowerCase())
     );
   }
 
@@ -225,6 +244,40 @@ export function OrgOverviewSection() {
   function openMembersDialog(direction: DirectionItem) {
     setSelectedDirectionForMembers(direction);
     setMembersDialogOpen(true);
+  }
+
+  // ============================================================
+  // Render: Permission Denied
+  // ============================================================
+
+  if (!canRead) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Vue d&apos;ensemble organisationnelle
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Structure et statistiques de l&apos;organisation AAEA
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+              <AlertCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+              Accès refusé
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center max-w-md">
+              Vous n&apos;avez pas la permission de consulter la vue organisationnelle.
+              Contactez votre administrateur si vous pensez qu&apos;il s&apos;agit
+              d&apos;une erreur.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   // ============================================================
@@ -306,7 +359,7 @@ export function OrgOverviewSection() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.location.reload()}
+              onClick={() => setRefreshKey((k) => k + 1)}
               className="mt-4"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
@@ -437,8 +490,8 @@ export function OrgOverviewSection() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {directions.map((direction) => {
-            const color = getDirectionColor(direction.code);
+          {directions.map((direction, index) => {
+            const color = getDirectionColor(index);
             const isExpanded = expandedDirection === direction.id;
             const members = getDirectionMembers(direction);
 

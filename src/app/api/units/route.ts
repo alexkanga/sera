@@ -2,14 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
-
-const createUnitSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  description: z.string().optional().nullable(),
-  directionId: z.string().min(1, "La direction est requise"),
-  headUserId: z.string().optional().nullable(),
-});
+import { createUnitSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 
 // GET /api/units — Liste des unités (actives par défaut)
 export async function GET(request: NextRequest) {
@@ -28,8 +22,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const directionId = searchParams.get("directionId") || "";
     const status = searchParams.get("status") || ""; // "active", "archived", "all"
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawPage = parseInt(searchParams.get("page") || "1");
+    const rawLimit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, isNaN(rawPage) ? 1 : rawPage);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -126,6 +122,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+
     const body = await request.json();
     const validated = createUnitSchema.parse(body);
 
@@ -149,6 +147,25 @@ export async function POST(request: NextRequest) {
         { error: "Direction non trouvée" },
         { status: 404 }
       );
+    }
+    if (direction.deletedAt) {
+      return NextResponse.json(
+        { error: "Impossible d'ajouter une unité à une direction archivée" },
+        { status: 400 }
+      );
+    }
+
+    // Vérifier que le headUserId existe si fourni
+    if (validated.headUserId) {
+      const headUser = await db.user.findUnique({
+        where: { id: validated.headUserId },
+      });
+      if (!headUser) {
+        return NextResponse.json(
+          { error: "L'utilisateur responsable spécifié n'existe pas" },
+          { status: 400 }
+        );
+      }
     }
 
     const unit = await db.unit.create({
@@ -180,6 +197,8 @@ export async function POST(request: NextRequest) {
           headUserId: unit.headUserId,
         }),
         details: `Création de l'unité ${unit.name} (${unit.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 
