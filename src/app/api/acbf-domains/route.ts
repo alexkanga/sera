@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const createDomainSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  order: z.number().int().min(0).default(0),
-});
+import { createAcbfDomainSchema } from "@/lib/validations";
 
 // GET /api/acbf-domains — Liste des domaines ACBF
 export async function GET(request: NextRequest) {
@@ -25,8 +21,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || "";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawPage = parseInt(searchParams.get("page") || "1");
+    const rawLimit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, isNaN(rawPage) ? 1 : rawPage);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -44,8 +42,8 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { code: { contains: search } },
+        { name: { contains: search, mode: "insensitive" } },
+        { code: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -66,22 +64,8 @@ export async function GET(request: NextRequest) {
       db.acbfDomain.count({ where }),
     ]);
 
-    const formattedDomains = domains.map((domain) => ({
-      id: domain.id,
-      code: domain.code,
-      name: domain.name,
-      order: domain.order,
-      isActive: domain.isActive,
-      deletedAt: domain.deletedAt,
-      createdAt: domain.createdAt,
-      updatedAt: domain.updatedAt,
-      _count: {
-        deliverables: domain._count.deliverables,
-      },
-    }));
-
     return NextResponse.json({
-      data: formattedDomains,
+      data: domains,
       pagination: {
         page,
         limit,
@@ -109,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validated = createDomainSchema.parse(body);
+    const validated = createAcbfDomainSchema.parse(body);
 
     // Vérifier si le code existe déjà
     const existingDomain = await db.acbfDomain.findUnique({
@@ -131,6 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Journal d'audit
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -143,6 +128,8 @@ export async function POST(request: NextRequest) {
           order: domain.order,
         }),
         details: `Création du domaine ACBF ${domain.name} (${domain.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 

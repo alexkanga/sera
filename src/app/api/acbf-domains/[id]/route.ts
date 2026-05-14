@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updateDomainSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  order: z.number().int().min(0).optional(),
-});
+import { updateAcbfDomainSchema, archivePermissionSchema } from "@/lib/validations";
 
 // GET /api/acbf-domains/[id] — Détail d'un domaine ACBF
 export async function GET(
@@ -104,7 +100,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validated = updateDomainSchema.parse(body);
+    const validated = updateAcbfDomainSchema.parse(body);
 
     // Vérifier l'unicité du code
     if (validated.code && validated.code !== existingDomain.code) {
@@ -130,6 +126,7 @@ export async function PUT(
     });
 
     // Journal d'audit
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -143,6 +140,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(updateData),
         details: `Mise à jour du domaine ACBF ${updatedDomain.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -195,9 +194,16 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+    const { action } = archivePermissionSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
+      // Cascade archive: archive all active deliverables under this domain
+      const deliverablesArchived = await db.acbfDeliverable.updateMany({
+        where: { domainId: id, deletedAt: null },
+        data: { deletedAt: new Date(), isActive: false },
+      });
+
       const updatedDomain = await db.acbfDomain.update({
         where: { id },
         data: { deletedAt: new Date(), isActive: false },
@@ -214,12 +220,20 @@ export async function PATCH(
             isActive: false,
             deletedAt: updatedDomain.deletedAt,
           }),
-          details: `Archive du domaine ACBF ${existingDomain.name}`,
+          details: `Archive du domaine ACBF ${existingDomain.name} (+ ${deliverablesArchived.count} livrable${deliverablesArchived.count !== 1 ? "s" : ""} en cascade)`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, archived: true } });
-    } else if (action === "restore") {
+    } else {
+      // Cascade restore: restore all deliverables under this domain
+      const deliverablesRestored = await db.acbfDeliverable.updateMany({
+        where: { domainId: id, deletedAt: { not: null } },
+        data: { deletedAt: null, isActive: true },
+      });
+
       const updatedDomain = await db.acbfDomain.update({
         where: { id },
         data: { deletedAt: null, isActive: true },
@@ -236,18 +250,21 @@ export async function PATCH(
             deletedAt: existingDomain.deletedAt,
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
-          details: `Restauration du domaine ACBF ${existingDomain.name}`,
+          details: `Restauration du domaine ACBF ${existingDomain.name} (+ ${deliverablesRestored.count} livrable${deliverablesRestored.count !== 1 ? "s" : ""} en cascade)`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, restored: true } });
     }
-
-    return NextResponse.json(
-      { error: "Action invalide. Utilisez 'archive' ou 'restore'" },
-      { status: 400 }
-    );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/acbf-domains/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

@@ -181,3 +181,50 @@ export const updateStrategicAxisSchema = z.object({
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: "Au moins un champ doit être fourni pour la mise à jour",
 });
+
+// ─── ACBF Domain schemas (Module 4) ────────────────────────────────────────
+
+export const createAcbfDomainSchema = z.object({
+  code: orgCodeField,
+  name: orgNameField,
+  order: z.number().int().min(0).default(0),
+});
+
+export const updateAcbfDomainSchema = z.object({
+  code: orgCodeField.optional(),
+  name: orgNameField.optional(),
+  order: z.number().int().min(0).optional(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});
+
+// ─── ACBF Deliverable schemas (Module 4) ───────────────────────────────────
+
+export const createAcbfDeliverableSchema = z.object({
+  code: z
+    .string()
+    .min(1, "Le code est requis")
+    .max(30, "Maximum 30 caractères")
+    .regex(/^[A-Z0-9_]+$/, "Code en majuscules, chiffres et _ uniquement"),
+  name: orgNameField,
+  domainId: z.string().min(1, "Le domaine ACBF est requis"),
+  description: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  priority: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+});
+
+export const updateAcbfDeliverableSchema = z.object({
+  code: z
+    .string()
+    .min(1, "Le code est requis")
+    .max(30, "Maximum 30 caractères")
+    .regex(/^[A-Z0-9_]+$/, "Code en majuscules, chiffres et _ uniquement")
+    .optional(),
+  name: orgNameField.optional(),
+  domainId: z.string().min(1, "Le domaine ACBF est requis").optional(),
+  description: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  priority: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});

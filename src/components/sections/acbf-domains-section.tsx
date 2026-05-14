@@ -14,8 +14,6 @@ import {
   Loader2,
   AlertCircle,
   X,
-  ChevronLeft,
-  ChevronRight,
   Hash,
   FileCheck,
 } from "lucide-react";
@@ -69,6 +67,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { checkPermission } from "@/lib/client-permissions";
+import { StatusBadge, PaginationControls } from "@/components/shared/org-shared";
 
 // ============================================================
 // Types
@@ -719,19 +718,7 @@ export function AcbfDomainsSection() {
 
                         {/* Status */}
                         <TableCell>
-                          {domain.deletedAt ? (
-                            <Badge className="text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-                              Archivé
-                            </Badge>
-                          ) : !domain.isActive ? (
-                            <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-                              Inactif
-                            </Badge>
-                          ) : (
-                            <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-                              Actif
-                            </Badge>
-                          )}
+                          <StatusBadge deletedAt={domain.deletedAt} isActive={domain.isActive} gender="m" />
                         </TableCell>
 
                         {/* Actions */}
@@ -812,69 +799,13 @@ export function AcbfDomainsSection() {
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {total > 0
-                    ? `Affichage de ${(page - 1) * ITEMS_PER_PAGE + 1} à ${Math.min(page * ITEMS_PER_PAGE, total)} sur ${total}`
-                    : "Aucun résultat"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                    className="h-8"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Précédent
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from(
-                      { length: Math.min(totalPages, 5) },
-                      (_, i) => {
-                        let pageNum: number;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (page <= 3) {
-                          pageNum = i + 1;
-                        } else if (page >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setPage(pageNum)}
-                            className={`h-8 w-8 p-0 ${
-                              page === pageNum
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : ""
-                            }`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      }
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={page >= totalPages}
-                    className="h-8"
-                  >
-                    Suivant
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPage}
+              />
             </>
           )}
         </CardContent>
@@ -1113,19 +1044,7 @@ export function AcbfDomainsSection() {
                         Statut
                       </p>
                       <div className="mt-1">
-                        {selectedDomain.deletedAt ? (
-                          <Badge className="text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-                            Archivé
-                          </Badge>
-                        ) : !selectedDomain.isActive ? (
-                          <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-                            Inactif
-                          </Badge>
-                        ) : (
-                          <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-                            Actif
-                          </Badge>
-                        )}
+                        <StatusBadge deletedAt={selectedDomain.deletedAt} isActive={selectedDomain.isActive} gender="m" />
                       </div>
                     </div>
                     <div>
@@ -1207,8 +1126,8 @@ export function AcbfDomainsSection() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {archiveAction === "archive"
-                ? `Êtes-vous sûr de vouloir archiver le domaine "${selectedDomain?.name}" ? Les livrables associés ne seront pas supprimés.`
-                : `Êtes-vous sûr de vouloir restaurer le domaine "${selectedDomain?.name}" ?`}
+                ? `Êtes-vous sûr de vouloir archiver le domaine "${selectedDomain?.name}" ? Tous les livrables associés seront également archivés en cascade.`
+                : `Êtes-vous sûr de vouloir restaurer le domaine "${selectedDomain?.name}" ? Tous les livrables précédemment archivés de ce domaine seront également restaurés.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

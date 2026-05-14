@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updateDeliverableSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  domainId: z.string().min(1).optional(),
-  description: z.string().optional().nullable(),
-  priority: z.string().optional().nullable(),
-  status: z.string().optional().nullable(),
-});
+import { updateAcbfDeliverableSchema, archivePermissionSchema } from "@/lib/validations";
 
 // GET /api/acbf-deliverables/[id] — Détail d'un livrable ACBF
 export async function GET(
@@ -107,7 +100,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validated = updateDeliverableSchema.parse(body);
+    const validated = updateAcbfDeliverableSchema.parse(body);
 
     // Vérifier l'unicité du code
     if (validated.code && validated.code !== existingDeliverable.code) {
@@ -122,7 +115,7 @@ export async function PUT(
       }
     }
 
-    // Vérifier que le domaine existe si modifié
+    // Vérifier que le domaine existe et n'est pas archivé si modifié
     if (validated.domainId && validated.domainId !== existingDeliverable.domainId) {
       const domainExists = await db.acbfDomain.findUnique({
         where: { id: validated.domainId },
@@ -130,6 +123,12 @@ export async function PUT(
       if (!domainExists) {
         return NextResponse.json(
           { error: "Le domaine ACBF spécifié n'existe pas" },
+          { status: 400 }
+        );
+      }
+      if (domainExists.deletedAt) {
+        return NextResponse.json(
+          { error: "Impossible de déplacer un livrable vers un domaine ACBF archivé" },
           { status: 400 }
         );
       }
@@ -159,6 +158,7 @@ export async function PUT(
     });
 
     // Journal d'audit
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -174,6 +174,8 @@ export async function PUT(
         }),
         newValue: JSON.stringify(updateData),
         details: `Mise à jour du livrable ACBF ${updatedDeliverable.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -232,7 +234,8 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+    const { action } = archivePermissionSchema.parse(body);
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
       const updatedDeliverable = await db.acbfDeliverable.update({
@@ -252,11 +255,13 @@ export async function PATCH(
             deletedAt: updatedDeliverable.deletedAt,
           }),
           details: `Archive du livrable ACBF ${existingDeliverable.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, archived: true } });
-    } else if (action === "restore") {
+    } else {
       const updatedDeliverable = await db.acbfDeliverable.update({
         where: { id },
         data: { deletedAt: null, isActive: true },
@@ -274,17 +279,20 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration du livrable ACBF ${existingDeliverable.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, restored: true } });
     }
-
-    return NextResponse.json(
-      { error: "Action invalide. Utilisez 'archive' ou 'restore'" },
-      { status: 400 }
-    );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/acbf-deliverables/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

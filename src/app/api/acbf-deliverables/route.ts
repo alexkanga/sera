@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const createDeliverableSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  domainId: z.string().min(1, "Le domaine ACBF est requis"),
-  description: z.string().optional().nullable(),
-  priority: z.string().optional().nullable(),
-  status: z.string().optional().nullable(),
-});
+import { createAcbfDeliverableSchema } from "@/lib/validations";
 
 // GET /api/acbf-deliverables — Liste des livrables ACBF
 export async function GET(request: NextRequest) {
@@ -29,8 +22,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || "";
     const domainId = searchParams.get("domainId") || "";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawPage = parseInt(searchParams.get("page") || "1");
+    const rawLimit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, isNaN(rawPage) ? 1 : rawPage);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -48,8 +43,8 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { code: { contains: search } },
+        { name: { contains: search, mode: "insensitive" } },
+        { code: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -76,23 +71,8 @@ export async function GET(request: NextRequest) {
       db.acbfDeliverable.count({ where }),
     ]);
 
-    const formattedDeliverables = deliverables.map((deliverable) => ({
-      id: deliverable.id,
-      code: deliverable.code,
-      name: deliverable.name,
-      description: deliverable.description,
-      priority: deliverable.priority,
-      status: deliverable.status,
-      domainId: deliverable.domainId,
-      domain: deliverable.domain,
-      isActive: deliverable.isActive,
-      deletedAt: deliverable.deletedAt,
-      createdAt: deliverable.createdAt,
-      updatedAt: deliverable.updatedAt,
-    }));
-
     return NextResponse.json({
-      data: formattedDeliverables,
+      data: deliverables,
       pagination: {
         page,
         limit,
@@ -120,7 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validated = createDeliverableSchema.parse(body);
+    const validated = createAcbfDeliverableSchema.parse(body);
 
     // Vérifier si le code existe déjà
     const existingDeliverable = await db.acbfDeliverable.findUnique({
@@ -133,13 +113,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Vérifier que le domaine existe
+    // Vérifier que le domaine existe et n'est pas archivé
     const existingDomain = await db.acbfDomain.findUnique({
       where: { id: validated.domainId },
     });
     if (!existingDomain) {
       return NextResponse.json(
         { error: "Le domaine ACBF spécifié n'existe pas" },
+        { status: 400 }
+      );
+    }
+    if (existingDomain.deletedAt) {
+      return NextResponse.json(
+        { error: "Impossible de créer un livrable dans un domaine ACBF archivé" },
         { status: 400 }
       );
     }
@@ -165,6 +151,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Journal d'audit
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -178,6 +165,8 @@ export async function POST(request: NextRequest) {
           priority: deliverable.priority,
         }),
         details: `Création du livrable ACBF ${deliverable.name} (${deliverable.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 
