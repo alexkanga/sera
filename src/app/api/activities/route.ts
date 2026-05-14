@@ -1,39 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import { createActivitySchema } from "@/lib/validations";
 import { z } from "zod";
-
-const createActivitySchema = z.object({
-  activityCode: z.string().optional(),
-  responsibleId: z.string().min(1, "Le responsable est requis"),
-  directionId: z.string().optional().nullable(),
-  primaryAxisId: z.string().optional().nullable(),
-  secondaryAxisId: z.string().optional().nullable(),
-  acbfDomainId: z.string().optional().nullable(),
-  acbfDeliverableId: z.string().optional().nullable(),
-  annualObjective: z.string().optional().nullable(),
-  title: z.string().min(1, "Le titre est requis"),
-  detailedTasks: z.string().optional().nullable(),
-  expectedDeliverable: z.string().optional().nullable(),
-  validatorId: z.string().optional().nullable(),
-  startDate: z.string().optional().nullable(),
-  endDate: z.string().optional().nullable(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne"),
-  performanceIndicator: z.string().optional().nullable(),
-  verificationSource: z.string().optional().nullable(),
-  status: z
-    .enum(["Non démarré", "En cours", "Terminé", "Annulé"])
-    .default("Non démarré"),
-  progressRate: z.number().min(0).max(100).default(0),
-  riskDescription: z.string().optional().nullable(),
-  comments: z.string().optional().nullable(),
-  validationStatus: z
-    .enum(["Brouillon", "Soumis", "Validé", "Rejeté"])
-    .default("Brouillon"),
-  nature: z.string().optional().nullable(),
-  dependency: z.string().optional().nullable(),
-  duration: z.string().optional().nullable(),
-});
 
 // GET /api/activities — Liste des activités
 export async function GET(request: NextRequest) {
@@ -58,8 +28,8 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get("priority") || "";
     const validationStatus = searchParams.get("validationStatus") || "";
     const activityStatus = searchParams.get("activityStatus") || "";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const limit = Math.max(1, parseInt(searchParams.get("limit") || "20") || 20);
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -232,7 +202,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify directionId exists if provided
+    // Verify directionId exists and is not archived (E4)
     if (validated.directionId) {
       const direction = await db.direction.findUnique({
         where: { id: validated.directionId },
@@ -243,9 +213,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (direction.deletedAt) {
+        return NextResponse.json(
+          { error: "La direction spécifiée est archivée" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify primaryAxisId exists if provided
+    // Verify primaryAxisId exists and is not archived (E4)
     if (validated.primaryAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.primaryAxisId },
@@ -256,9 +232,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique principal spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify secondaryAxisId exists if provided
+    // Verify secondaryAxisId exists and is not archived (E4)
     if (validated.secondaryAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.secondaryAxisId },
@@ -269,9 +251,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique secondaire spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify acbfDomainId exists if provided
+    // Verify acbfDomainId exists and is not archived (E4)
     if (validated.acbfDomainId) {
       const domain = await db.acbfDomain.findUnique({
         where: { id: validated.acbfDomainId },
@@ -282,16 +270,36 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (domain.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify acbfDeliverableId exists if provided
+    // Verify acbfDeliverableId exists and is not archived (E4)
+    // Also check that the deliverable's domain is not archived
     if (validated.acbfDeliverableId) {
       const deliverable = await db.acbfDeliverable.findUnique({
         where: { id: validated.acbfDeliverableId },
+        include: { domain: true },
       });
       if (!deliverable) {
         return NextResponse.json(
           { error: "Le livrable ACBF spécifié n'existe pas" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.deletedAt) {
+        return NextResponse.json(
+          { error: "Le livrable ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.domain?.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine du livrable ACBF spécifié est archivé" },
           { status: 400 }
         );
       }
@@ -310,6 +318,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // C2: Force validationStatus to "Brouillon" — never read from input
     const activity = await db.activity.create({
       data: {
         activityCode,
@@ -333,7 +342,7 @@ export async function POST(request: NextRequest) {
         progressRate: validated.progressRate,
         riskDescription: validated.riskDescription ?? null,
         comments: validated.comments ?? null,
-        validationStatus: validated.validationStatus,
+        validationStatus: "Brouillon", // C2: Always "Brouillon" on creation
         nature: validated.nature ?? null,
         dependency: validated.dependency ?? null,
         duration: validated.duration ?? null,
@@ -358,7 +367,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Journal d'audit
+    // Journal d'audit — C4: Include IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -376,6 +386,8 @@ export async function POST(request: NextRequest) {
           validationStatus: activity.validationStatus,
         }),
         details: `Création de l'activité ${activity.title} (${activity.activityCode})`,
+        ipAddress: ip,
+        userAgent,
       },
     });
 

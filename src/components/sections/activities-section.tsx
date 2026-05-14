@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { activityFormSchema, type ActivityFormValues } from "@/lib/validations";
+import { PaginationControls } from "@/components/shared/org-shared";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
@@ -14,15 +16,10 @@ import {
   Loader2,
   AlertCircle,
   X,
-  ChevronLeft,
-  ChevronRight,
   Send,
   CheckCircle2,
   XCircle,
   Building2,
-  Target,
-  BookOpen,
-  FileCheck,
   UserCircle,
   CalendarDays,
   BarChart3,
@@ -30,7 +27,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,38 +164,6 @@ interface Activity {
 }
 
 // ============================================================
-// Zod Schema
-// ============================================================
-
-const activityFormSchema = z.object({
-  title: z.string().min(2, "Minimum 2 caractères").max(500, "Maximum 500 caractères"),
-  responsibleId: z.string().min(1, "Le responsable est requis"),
-  directionId: z.string().optional().nullable(),
-  primaryAxisId: z.string().optional().nullable(),
-  secondaryAxisId: z.string().optional().nullable(),
-  acbfDomainId: z.string().optional().nullable(),
-  acbfDeliverableId: z.string().optional().nullable(),
-  annualObjective: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  detailedTasks: z.string().max(5000, "Maximum 5000 caractères").optional().nullable(),
-  expectedDeliverable: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  validatorId: z.string().optional().nullable(),
-  startDate: z.string().optional().nullable(),
-  endDate: z.string().optional().nullable(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne"),
-  performanceIndicator: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
-  verificationSource: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
-  status: z.enum(["Non démarré", "En cours", "Terminé", "Annulé"]).default("Non démarré"),
-  progressRate: z.number().min(0).max(100).default(0),
-  riskDescription: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  comments: z.string().max(5000, "Maximum 5000 caractères").optional().nullable(),
-  nature: z.string().max(200, "Maximum 200 caractères").optional().nullable(),
-  dependency: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
-  duration: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
-});
-
-type ActivityFormValues = z.infer<typeof activityFormSchema>;
-
-// ============================================================
 // Constants
 // ============================================================
 
@@ -225,9 +189,6 @@ const NATURE_OPTIONS = [
   { value: "Appui", label: "Appui" },
 ];
 
-// ============================================================
-// Permission Helpers
-// ============================================================
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -352,13 +313,6 @@ function getValidationStatusBadge(validationStatus: string | null) {
   }
 }
 
-function getProgressColor(rate: number): string {
-  if (rate >= 75) return "bg-emerald-500";
-  if (rate >= 50) return "bg-blue-500";
-  if (rate >= 25) return "bg-amber-500";
-  return "bg-slate-400";
-}
-
 // ============================================================
 // Main Component
 // ============================================================
@@ -380,6 +334,7 @@ export function ActivitiesSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [directionFilter, setDirectionFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -397,7 +352,6 @@ export function ActivitiesSection() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [validateDialogOpen, setValidateDialogOpen] = useState(false);
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
 
   // ----- Selected activity -----
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
@@ -406,6 +360,9 @@ export function ActivitiesSection() {
 
   // ----- Submit state -----
   const [submitting, setSubmitting] = useState(false);
+
+  // ----- View detail loading -----
+  const [viewLoading, setViewLoading] = useState(false);
 
   // ----- Dropdown options -----
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
@@ -454,7 +411,7 @@ export function ActivitiesSection() {
       params.set("page", page.toString());
       params.set("limit", ITEMS_PER_PAGE.toString());
 
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       if (directionFilter) params.set("directionId", directionFilter);
       if (priorityFilter) params.set("priority", priorityFilter);
@@ -476,7 +433,13 @@ export function ActivitiesSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, directionFilter, priorityFilter, validationFilter, activityStatusFilter]);
+  }, [page, debouncedSearch, statusFilter, directionFilter, priorityFilter, validationFilter, activityStatusFilter]);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (canRead) {
@@ -683,7 +646,7 @@ export function ActivitiesSection() {
   async function handleView(activity: Activity) {
     setSelectedActivity(activity);
     setViewDialogOpen(true);
-
+    setViewLoading(true);
     try {
       const res = await fetch(`/api/activities/${activity.id}`);
       if (res.ok) {
@@ -694,6 +657,8 @@ export function ActivitiesSection() {
       }
     } catch {
       // Keep existing data
+    } finally {
+      setViewLoading(false);
     }
   }
 
@@ -2084,69 +2049,13 @@ export function ActivitiesSection() {
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {total > 0
-                    ? `Affichage de ${(page - 1) * ITEMS_PER_PAGE + 1} à ${Math.min(page * ITEMS_PER_PAGE, total)} sur ${total}`
-                    : "Aucun résultat"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                    className="h-8"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Précédent
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from(
-                      { length: Math.min(totalPages, 5) },
-                      (_, i) => {
-                        let pageNum: number;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (page <= 3) {
-                          pageNum = i + 1;
-                        } else if (page >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setPage(pageNum)}
-                            className={`h-8 w-8 p-0 ${
-                              page === pageNum
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : ""
-                            }`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      }
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={page >= totalPages}
-                    className="h-8"
-                  >
-                    Suivant
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPage}
+              />
             </>
           )}
         </CardContent>
@@ -2209,6 +2118,12 @@ export function ActivitiesSection() {
               Informations complètes de l&apos;activité PTA
             </DialogDescription>
           </DialogHeader>
+          {viewLoading && (
+            <div className="flex items-center justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
+              <span className="ml-2 text-sm text-slate-500">Chargement des détails...</span>
+            </div>
+          )}
           {renderViewContent()}
           <DialogFooter className="gap-2 pt-4 border-t">
             <Button

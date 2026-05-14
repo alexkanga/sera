@@ -228,3 +228,117 @@ export const updateAcbfDeliverableSchema = z.object({
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: "Au moins un champ doit être fourni pour la mise à jour",
 });
+
+// ─── Activity schemas (Module 5 — PTA individuels) ──────────────────────────
+
+const activityTextField = z
+  .string()
+  .max(5000, "Maximum 5000 caractères")
+  .optional()
+  .nullable();
+
+const activityMediumTextField = z
+  .string()
+  .max(2000, "Maximum 2000 caractères")
+  .optional()
+  .nullable();
+
+const activityShortTextField = z
+  .string()
+  .max(1000, "Maximum 1000 caractères")
+  .optional()
+  .nullable();
+
+export const createActivitySchema = z.object({
+  activityCode: z.string().optional(),
+  responsibleId: z.string().min(1, "Le responsable est requis"),
+  directionId: z.string().optional().nullable(),
+  primaryAxisId: z.string().optional().nullable(),
+  secondaryAxisId: z.string().optional().nullable(),
+  acbfDomainId: z.string().optional().nullable(),
+  acbfDeliverableId: z.string().optional().nullable(),
+  annualObjective: activityMediumTextField,
+  title: z.string().min(1, "Le titre est requis").max(500, "Maximum 500 caractères"),
+  detailedTasks: activityTextField,
+  expectedDeliverable: activityMediumTextField,
+  validatorId: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne"),
+  performanceIndicator: activityShortTextField,
+  verificationSource: activityShortTextField,
+  status: z.enum(["Non démarré", "En cours", "Terminé", "Annulé"]).default("Non démarré"),
+  progressRate: z.number().min(0).max(100).default(0),
+  riskDescription: activityMediumTextField,
+  comments: activityTextField,
+  // C2 fix: validationStatus is NOT accepted on creation — always forced to "Brouillon"
+  nature: z.string().max(200, "Maximum 200 caractères").optional().nullable(),
+  dependency: activityShortTextField,
+  duration: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
+});
+
+export const updateActivitySchema = z.object({
+  activityCode: z.string().optional(),
+  responsibleId: z.string().optional(),
+  directionId: z.string().optional().nullable(),
+  primaryAxisId: z.string().optional().nullable(),
+  secondaryAxisId: z.string().optional().nullable(),
+  acbfDomainId: z.string().optional().nullable(),
+  acbfDeliverableId: z.string().optional().nullable(),
+  annualObjective: activityMediumTextField,
+  title: z.string().min(1, "Le titre est requis").max(500, "Maximum 500 caractères").optional(),
+  detailedTasks: activityTextField,
+  expectedDeliverable: activityMediumTextField,
+  validatorId: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
+  performanceIndicator: activityShortTextField,
+  verificationSource: activityShortTextField,
+  status: z.enum(["Non démarré", "En cours", "Terminé", "Annulé"]).optional(),
+  progressRate: z.number().min(0).max(100).optional(),
+  riskDescription: activityMediumTextField,
+  comments: activityTextField,
+  // C3 fix: validationStatus removed from update — only changed via PATCH actions
+  nature: z.string().max(200, "Maximum 200 caractères").optional().nullable(),
+  dependency: activityShortTextField,
+  duration: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});
+
+// C1 fix: PATCH action schema with proper Zod validation
+export const activityActionSchema = z.object({
+  action: z.enum(["archive", "restore", "submit", "validate", "reject"], {
+    message: "Action invalide. Utilisez 'archive', 'restore', 'submit', 'validate' ou 'reject'",
+  }),
+});
+
+// Frontend form schema (matches createActivitySchema but with client-friendly messages)
+export const activityFormSchema = z.object({
+  title: z.string().min(2, "Minimum 2 caractères").max(500, "Maximum 500 caractères"),
+  responsibleId: z.string().min(1, "Le responsable est requis"),
+  directionId: z.string().optional().nullable(),
+  primaryAxisId: z.string().optional().nullable(),
+  secondaryAxisId: z.string().optional().nullable(),
+  acbfDomainId: z.string().optional().nullable(),
+  acbfDeliverableId: z.string().optional().nullable(),
+  annualObjective: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  detailedTasks: z.string().max(5000, "Maximum 5000 caractères").optional().nullable(),
+  expectedDeliverable: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  validatorId: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).default("Moyenne"),
+  performanceIndicator: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
+  verificationSource: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
+  status: z.enum(["Non démarré", "En cours", "Terminé", "Annulé"]).default("Non démarré"),
+  progressRate: z.number().min(0).max(100).default(0),
+  riskDescription: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  comments: z.string().max(5000, "Maximum 5000 caractères").optional().nullable(),
+  nature: z.string().max(200, "Maximum 200 caractères").optional().nullable(),
+  dependency: z.string().max(1000, "Maximum 1000 caractères").optional().nullable(),
+  duration: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
+});
+
+export type ActivityFormValues = z.infer<typeof activityFormSchema>;

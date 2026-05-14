@@ -1,39 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import { updateActivitySchema, activityActionSchema } from "@/lib/validations";
 import { z } from "zod";
-
-const updateActivitySchema = z.object({
-  activityCode: z.string().optional(),
-  responsibleId: z.string().optional(),
-  directionId: z.string().optional().nullable(),
-  primaryAxisId: z.string().optional().nullable(),
-  secondaryAxisId: z.string().optional().nullable(),
-  acbfDomainId: z.string().optional().nullable(),
-  acbfDeliverableId: z.string().optional().nullable(),
-  annualObjective: z.string().optional().nullable(),
-  title: z.string().optional(),
-  detailedTasks: z.string().optional().nullable(),
-  expectedDeliverable: z.string().optional().nullable(),
-  validatorId: z.string().optional().nullable(),
-  startDate: z.string().optional().nullable(),
-  endDate: z.string().optional().nullable(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
-  performanceIndicator: z.string().optional().nullable(),
-  verificationSource: z.string().optional().nullable(),
-  status: z
-    .enum(["Non démarré", "En cours", "Terminé", "Annulé"])
-    .optional(),
-  progressRate: z.number().min(0).max(100).optional(),
-  riskDescription: z.string().optional().nullable(),
-  comments: z.string().optional().nullable(),
-  validationStatus: z
-    .enum(["Brouillon", "Soumis", "Validé", "Rejeté"])
-    .optional(),
-  nature: z.string().optional().nullable(),
-  dependency: z.string().optional().nullable(),
-  duration: z.string().optional().nullable(),
-});
 
 // GET /api/activities/[id] — Détail d'une activité
 export async function GET(
@@ -174,7 +144,7 @@ export async function PUT(
       }
     }
 
-    // Verify directionId exists if changed
+    // Verify directionId exists and is not archived (E4)
     if (validated.directionId) {
       const direction = await db.direction.findUnique({
         where: { id: validated.directionId },
@@ -185,9 +155,15 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (direction.deletedAt) {
+        return NextResponse.json(
+          { error: "La direction spécifiée est archivée" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify primaryAxisId exists if changed
+    // Verify primaryAxisId exists and is not archived (E4)
     if (validated.primaryAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.primaryAxisId },
@@ -198,9 +174,15 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique principal spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify secondaryAxisId exists if changed
+    // Verify secondaryAxisId exists and is not archived (E4)
     if (validated.secondaryAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.secondaryAxisId },
@@ -211,9 +193,15 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique secondaire spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify acbfDomainId exists if changed
+    // Verify acbfDomainId exists and is not archived (E4)
     if (validated.acbfDomainId) {
       const domain = await db.acbfDomain.findUnique({
         where: { id: validated.acbfDomainId },
@@ -224,16 +212,36 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (domain.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify acbfDeliverableId exists if changed
+    // Verify acbfDeliverableId exists and is not archived (E4)
+    // Also check that the deliverable's domain is not archived
     if (validated.acbfDeliverableId) {
       const deliverable = await db.acbfDeliverable.findUnique({
         where: { id: validated.acbfDeliverableId },
+        include: { domain: true },
       });
       if (!deliverable) {
         return NextResponse.json(
           { error: "Le livrable ACBF spécifié n'existe pas" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.deletedAt) {
+        return NextResponse.json(
+          { error: "Le livrable ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.domain?.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine du livrable ACBF spécifié est archivé" },
           { status: 400 }
         );
       }
@@ -252,7 +260,7 @@ export async function PUT(
       }
     }
 
-    // Build update data
+    // Build update data — C3: validationStatus is completely excluded
     const updateData: Record<string, unknown> = {};
     if (validated.activityCode !== undefined)
       updateData.activityCode = validated.activityCode;
@@ -298,8 +306,7 @@ export async function PUT(
       updateData.riskDescription = validated.riskDescription;
     if (validated.comments !== undefined)
       updateData.comments = validated.comments;
-    if (validated.validationStatus !== undefined)
-      updateData.validationStatus = validated.validationStatus;
+    // C3: validationStatus is NOT included — can only be changed via PATCH actions
     if (validated.nature !== undefined) updateData.nature = validated.nature;
     if (validated.dependency !== undefined)
       updateData.dependency = validated.dependency;
@@ -331,7 +338,8 @@ export async function PUT(
       },
     });
 
-    // Journal d'audit with oldValue/newValue comparison
+    // Journal d'audit with oldValue/newValue comparison — C4: Include IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
     const oldValue: Record<string, unknown> = {};
     const newValue: Record<string, unknown> = {};
     for (const key of Object.keys(updateData)) {
@@ -349,6 +357,8 @@ export async function PUT(
         oldValue: JSON.stringify(oldValue),
         newValue: JSON.stringify(newValue),
         details: `Mise à jour de l'activité ${updatedActivity.title} (${updatedActivity.activityCode})`,
+        ipAddress: ip,
+        userAgent,
       },
     });
 
@@ -388,10 +398,13 @@ export async function PATCH(
       );
     }
 
+    // C1: Use activityActionSchema for proper Zod validation
     const body = await request.json();
-    const { action } = body as {
-      action: "archive" | "restore" | "submit" | "validate" | "reject";
-    };
+    const validated = activityActionSchema.parse(body);
+    const { action } = validated;
+
+    // C4: Get IP and User-Agent once for all audit logs
+    const { ip, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
       const hasAccess = userHasPermission(currentUser, "pta:archive");
@@ -419,6 +432,8 @@ export async function PATCH(
             deletedAt: updatedActivity.deletedAt,
           }),
           details: `Archive de l'activité ${existingActivity.title} (${existingActivity.activityCode})`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -449,6 +464,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de l'activité ${existingActivity.title} (${existingActivity.activityCode})`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -485,6 +502,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ validationStatus: "Soumis" }),
           details: `Soumission de l'activité ${existingActivity.title} (${existingActivity.activityCode})`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -523,6 +542,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ validationStatus: "Validé" }),
           details: `Validation de l'activité ${existingActivity.title} (${existingActivity.activityCode})`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -561,6 +582,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ validationStatus: "Rejeté" }),
           details: `Rejet de l'activité ${existingActivity.title} (${existingActivity.activityCode})`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -577,6 +600,12 @@ export async function PATCH(
       { status: 400 }
     );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/activities/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
