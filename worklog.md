@@ -1324,3 +1324,30 @@ Stage Summary:
 - ImportHistory tracks full lifecycle: status, row counts, errors, preview data
 - Download template feature generates blank .xlsx with expected column headers
 - Footer updated to "AAEA Pilotage 360 — Modules 1 à 14"
+
+---
+Task ID: Module1-MEDIUM-MINOR
+Agent: Main Agent
+Task: Module 1 — MEDIUM (5) and MINOR (4) priority optimizations
+
+Work Log:
+- 1.11: Fixed weak password validation in users/[id]/route.ts — replaced `z.string().min(6).optional()` with `passwordSchema.optional()` from centralized validations
+- 1.12: Created `src/lib/audit-utils.ts` with `getIpAndUserAgent(request)` utility. Added IP/User-Agent capture to ALL audit logs across 7 route files: users, users/[id], roles, roles/[id], permissions, permissions/[id], change-password
+- 1.13: Added FK validation for roleIds in users/route.ts and users/[id]/route.ts, and permissionIds in roles/route.ts and roles/[id]/route.ts — checks that IDs exist and are active/non-archived before creating relations
+- 1.14: Aligned client-side password validation in users-section.tsx with server-side passwordSchema: minimum 8 chars + 1 uppercase + 1 lowercase + 1 digit + 1 special character
+- 1.15: Added `passwordChangedAt DateTime?` field to User model in Prisma schema. Updated change-password route to set it. Updated auth.ts JWT callback to compare token's passwordChangedAt with DB value — if DB is newer, invalidate session. Added SessionWatcher component to auto-sign-out when session.error === "PasswordChanged"
+- 1.16: Added `{ value: "LOGIN_FAILED", label: "Tentative échouée" }` to ACTION_OPTIONS in audit-logs-section.tsx + badge config with red styling
+- 1.17: Created `src/lib/module-labels.ts` with shared MODULE_OPTIONS, MODULE_LABELS, and getModuleLabel(). Updated roles-section.tsx and permissions-section.tsx to import from shared file instead of local duplicates
+- 1.18: Replaced `hasAuditPermission()` local function with `checkPermission()` from `@/lib/client-permissions` in audit-logs-section.tsx
+- 1.19: Moved all role/permission schemas to `src/lib/validations.ts`: createRoleSchema (with uppercase refine), updateRoleSchema, createPermissionSchema, updatePermissionSchema, archivePermissionSchema. Updated all 4 route files to import from centralized validations
+- Ran `bun run db:push` successfully (passwordChangedAt field added)
+- Ran `bun run lint` — clean ✅
+- Committed (not yet pushed to GitHub)
+
+Stage Summary:
+- All 9 optimizations (5 MEDIUM + 4 MINOR) implemented and committed
+- New files: src/lib/audit-utils.ts, src/lib/module-labels.ts
+- Key security improvements: IP/UA in all audit logs, FK validation, session invalidation on password change
+- Code quality improvements: centralized validation schemas, shared module labels, consistent permission checking
+- Prisma schema updated with passwordChangedAt field
+- Awaiting authorization to push to GitHub
