@@ -60,6 +60,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -168,18 +169,6 @@ const ITEMS_PER_PAGE = 10;
 // ============================================================
 // Permission Helper
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "notifications:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Date formatting
 // ============================================================
@@ -239,9 +228,9 @@ function timeAgo(iso: string | null | undefined): string {
 
 export function NotificationsSection() {
   const { data: session } = useSession();
-  const canRead = hasPermission(session?.user?.roles ?? [], "notifications:read");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "notifications:update");
-  const canDelete = hasPermission(session?.user?.roles ?? [], "notifications:delete");
+  const canRead = checkPermission(session?.user?.roles ?? [], "notifications:read");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "notifications:update");
+  const canDelete = checkPermission(session?.user?.roles ?? [], "notifications:delete");
 
   // Main tab state
   const [mainTab, setMainTab] = useState("notifications");

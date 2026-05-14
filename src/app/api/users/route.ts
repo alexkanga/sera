@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hash, compare } from "bcryptjs";
+import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { createUserSchema } from "@/lib/validations";
 import { z } from "zod";
-
-const createUserSchema = z.object({
-  email: z.string().email("Email invalide"),
-  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
-  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
-  ptaCode: z.string().optional().nullable(),
-  position: z.string().optional().nullable(),
-  department: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  roleIds: z.array(z.string()).optional().default([]),
-});
 
 // GET /api/users — Liste des utilisateurs (pas les archivés par défaut)
 export async function GET(request: NextRequest) {
@@ -105,6 +95,7 @@ export async function GET(request: NextRequest) {
       avatar: user.avatar,
       isActive: user.isActive,
       isLocked: user.isLocked,
+      failedLoginAttempts: user.failedLoginAttempts,
       lastLoginAt: user.lastLoginAt,
       deletedAt: user.deletedAt,
       createdAt: user.createdAt,
@@ -174,7 +165,8 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await hash(validated.password, 12);
 
-    const user = await db.user.create({
+    // Use create with include to avoid double query (fix 1.10)
+    const createdUser = await db.user.create({
       data: {
         email: validated.email,
         password: hashedPassword,
@@ -183,40 +175,12 @@ export async function POST(request: NextRequest) {
         position: validated.position,
         department: validated.department,
         phone: validated.phone,
+        roles: validated.roleIds.length > 0
+          ? {
+              create: validated.roleIds.map((roleId: string) => ({ roleId })),
+            }
+          : undefined,
       },
-    });
-
-    // Assigner les rôles
-    if (validated.roleIds && validated.roleIds.length > 0) {
-      await db.userRole.createMany({
-        data: validated.roleIds.map((roleId: string) => ({
-          userId: user.id,
-          roleId,
-        })),
-      });
-    }
-
-    // Journal d'audit
-    await db.auditLog.create({
-      data: {
-        userId: currentUser.id,
-        action: "CREATE",
-        entity: "User",
-        entityId: user.id,
-        newValue: JSON.stringify({
-          email: user.email,
-          name: user.name,
-          ptaCode: user.ptaCode,
-          position: user.position,
-          department: user.department,
-          roleIds: validated.roleIds,
-        }),
-        details: `Création de l'utilisateur ${user.name} (${user.email})`,
-      },
-    });
-
-    const createdUser = await db.user.findUnique({
-      where: { id: user.id },
       include: {
         roles: {
           include: {
@@ -230,20 +194,39 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Journal d'audit
+    await db.auditLog.create({
+      data: {
+        userId: currentUser.id,
+        action: "CREATE",
+        entity: "User",
+        entityId: createdUser.id,
+        newValue: JSON.stringify({
+          email: createdUser.email,
+          name: createdUser.name,
+          ptaCode: createdUser.ptaCode,
+          position: createdUser.position,
+          department: createdUser.department,
+          roleIds: validated.roleIds,
+        }),
+        details: `Création de l'utilisateur ${createdUser.name} (${createdUser.email})`,
+      },
+    });
+
     return NextResponse.json(
       {
         data: {
-          id: createdUser!.id,
-          email: createdUser!.email,
-          name: createdUser!.name,
-          ptaCode: createdUser!.ptaCode,
-          position: createdUser!.position,
-          department: createdUser!.department,
-          phone: createdUser!.phone,
-          isActive: createdUser!.isActive,
-          isLocked: createdUser!.isLocked,
-          createdAt: createdUser!.createdAt,
-          roles: createdUser!.roles.map((ur) => ({
+          id: createdUser.id,
+          email: createdUser.email,
+          name: createdUser.name,
+          ptaCode: createdUser.ptaCode,
+          position: createdUser.position,
+          department: createdUser.department,
+          phone: createdUser.phone,
+          isActive: createdUser.isActive,
+          isLocked: createdUser.isLocked,
+          createdAt: createdUser.createdAt,
+          roles: createdUser.roles.map((ur) => ({
             id: ur.role.id,
             code: ur.role.code,
             name: ur.role.name,

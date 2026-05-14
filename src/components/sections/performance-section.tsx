@@ -102,6 +102,7 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -191,18 +192,6 @@ const KPI_DIRECTIONS_VAL = ["higher", "lower"];
 // ============================================================
 // Permission Helper
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "kpi:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Chart Configs
 // ============================================================
@@ -294,8 +283,8 @@ function getCategoryBadge(category: string) {
 
 export function PerformanceSection() {
   const { data: session } = useSession();
-  const canRead = hasPermission(session?.user?.roles ?? [], "kpi:read");
-  const canWrite = hasPermission(session?.user?.roles ?? [], "kpi:write");
+  const canRead = checkPermission(session?.user?.roles ?? [], "kpi:read");
+  const canWrite = checkPermission(session?.user?.roles ?? [], "kpi:write");
 
   // Main tab state
   const [mainTab, setMainTab] = useState("dashboard");

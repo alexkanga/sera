@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { hash, compare } from "bcryptjs";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/permissions";
+import { changePasswordSchema } from "@/lib/validations";
 import { z } from "zod";
-
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Mot de passe actuel requis"),
-  newPassword: z.string().min(6, "Le nouveau mot de passe doit contenir au moins 6 caractères"),
-  confirmPassword: z.string().min(1, "Confirmation du mot de passe requise"),
-});
 
 // POST /api/auth/change-password
 export async function POST(request: NextRequest) {
@@ -44,7 +39,7 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await hash(validated.newPassword, 12);
     await db.user.update({
       where: { id: currentUser.id },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, failedLoginAttempts: 0 },
     });
 
     await db.auditLog.create({

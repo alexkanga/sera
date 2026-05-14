@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useHasPermission } from "@/lib/client-permissions";
 import { toast } from "sonner";
 import {
   Key,
@@ -81,15 +81,7 @@ interface PermissionItem {
 // ─── Helper: Check user permissions ──────────────────────────────────────────
 
 function useUserPermissions() {
-  const { data: session } = useSession();
-  const allPermissions: string[] = [];
-  if (session?.user?.roles) {
-    session.user.roles.forEach((r) => {
-      r.permissions.forEach((p) => allPermissions.push(p));
-    });
-  }
-  const has = (perm: string) =>
-    allPermissions.includes(perm) || allPermissions.includes("permissions:*") || allPermissions.includes("*");
+  const { has } = useHasPermission();
   return {
     canRead: has("permissions:read"),
     canCreate: has("permissions:create"),

@@ -78,6 +78,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -140,18 +141,6 @@ const ITEMS_PER_PAGE = 20;
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "directions:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -173,16 +162,16 @@ export function DirectionsSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "directions:read");
-  const canCreate = hasPermission(
+  const canRead = checkPermission(session?.user?.roles ?? [], "directions:read");
+  const canCreate = checkPermission(
     session?.user?.roles ?? [],
     "directions:create"
   );
-  const canUpdate = hasPermission(
+  const canUpdate = checkPermission(
     session?.user?.roles ?? [],
     "directions:update"
   );
-  const canArchive = hasPermission(
+  const canArchive = checkPermission(
     session?.user?.roles ?? [],
     "directions:archive"
   );

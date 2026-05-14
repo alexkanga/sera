@@ -77,6 +77,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -139,18 +140,6 @@ const ITEMS_PER_PAGE = 20;
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "units:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -172,10 +161,10 @@ export function UnitsSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "units:read");
-  const canCreate = hasPermission(session?.user?.roles ?? [], "units:create");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "units:update");
-  const canArchive = hasPermission(
+  const canRead = checkPermission(session?.user?.roles ?? [], "units:read");
+  const canCreate = checkPermission(session?.user?.roles ?? [], "units:create");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "units:update");
+  const canArchive = checkPermission(
     session?.user?.roles ?? [],
     "units:archive"
   );

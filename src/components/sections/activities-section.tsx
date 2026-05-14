@@ -86,6 +86,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -227,18 +228,6 @@ const NATURE_OPTIONS = [
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "pta:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -378,13 +367,13 @@ export function ActivitiesSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "pta:read");
-  const canCreate = hasPermission(session?.user?.roles ?? [], "pta:create");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "pta:update");
-  const canArchive = hasPermission(session?.user?.roles ?? [], "pta:archive");
-  const canSubmit = hasPermission(session?.user?.roles ?? [], "pta:submit");
-  const canValidate = hasPermission(session?.user?.roles ?? [], "pta:validate");
-  const isAdmin = hasPermission(session?.user?.roles ?? [], "admin:*");
+  const canRead = checkPermission(session?.user?.roles ?? [], "pta:read");
+  const canCreate = checkPermission(session?.user?.roles ?? [], "pta:create");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "pta:update");
+  const canArchive = checkPermission(session?.user?.roles ?? [], "pta:archive");
+  const canSubmit = checkPermission(session?.user?.roles ?? [], "pta:submit");
+  const canValidate = checkPermission(session?.user?.roles ?? [], "pta:validate");
+  const isAdmin = checkPermission(session?.user?.roles ?? [], "admin:*");
 
   // ----- List state -----
   const [activities, setActivities] = useState<Activity[]>([]);

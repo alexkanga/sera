@@ -8,6 +8,10 @@ const updatePermissionSchema = z.object({
   description: z.string().optional().nullable(),
 });
 
+const archivePermissionSchema = z.object({
+  action: z.enum(["archive", "restore"]),
+});
+
 // GET /api/permissions/[id]
 export async function GET(
   request: NextRequest,
@@ -96,6 +100,83 @@ export async function PUT(
       );
     }
     console.error("Erreur PUT /api/permissions/[id]:", error);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}
+
+// PATCH /api/permissions/[id] — Archive or restore a permission
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
+
+    const hasAccess = userHasPermission(currentUser, "permissions:update");
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const validated = archivePermissionSchema.parse(body);
+
+    const existing = await db.permission.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Permission non trouvée" }, { status: 404 });
+    }
+
+    // Protect permissions assigned to system roles
+    if (validated.action === "archive") {
+      const systemRoleAssignments = await db.rolePermission.count({
+        where: {
+          permissionId: id,
+          role: { isSystem: true },
+        },
+      });
+      if (systemRoleAssignments > 0) {
+        return NextResponse.json(
+          { error: "Impossible d'archiver une permission assignée à un rôle système" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const isArchiving = validated.action === "archive";
+    const updated = await db.permission.update({
+      where: { id },
+      data: {
+        isActive: !isArchiving,
+        deletedAt: isArchiving ? new Date() : null,
+      },
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId: currentUser.id,
+        action: isArchiving ? "ARCHIVE" : "RESTORE",
+        entity: "Permission",
+        entityId: id,
+        oldValue: JSON.stringify({ isActive: existing.isActive, deletedAt: existing.deletedAt }),
+        newValue: JSON.stringify({ isActive: updated.isActive, deletedAt: updated.deletedAt }),
+        details: isArchiving
+          ? `Archivage de la permission ${updated.name} (${updated.code})`
+          : `Restauration de la permission ${updated.name} (${updated.code})`,
+      },
+    });
+
+    return NextResponse.json({ data: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
+    console.error("Erreur PATCH /api/permissions/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

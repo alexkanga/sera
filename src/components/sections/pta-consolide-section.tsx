@@ -72,6 +72,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -189,18 +190,6 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "pta:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -338,7 +327,7 @@ export function PtaConsolideSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "pta:read");
+  const canRead = checkPermission(session?.user?.roles ?? [], "pta:read");
 
   // ----- Stats state -----
   const [stats, setStats] = useState<Stats | null>(null);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { checkPermission } from "@/lib/client-permissions";
 import { format } from "date-fns";
 import {
   Download,
@@ -167,18 +168,7 @@ function formatDate(d: string | null | Date): string {
   return format(date, "dd/MM/yyyy HH:mm");
 }
 
-function hasPermission(session: unknown, perm: string): boolean {
-  const s = session as { user?: { roles?: Array<{ permissions: string[] }> } } | null;
-  if (!s?.user?.roles) return false;
-  return s.user.roles.some((r) =>
-    r.permissions.some((p) => {
-      if (p === "admin:*") return true;
-      if (p === perm) return true;
-      if (p === `${perm.split(":")[0]}:*`) return true;
-      return false;
-    })
-  );
-}
+
 
 // ============================================================
 // Component
@@ -186,8 +176,8 @@ function hasPermission(session: unknown, perm: string): boolean {
 
 export function ExportsSection() {
   const { data: session } = useSession();
-  const canRead = hasPermission(session, "export:read");
-  const canExecute = hasPermission(session, "export:execute");
+  const canRead = checkPermission(session?.user?.roles || [], "export:read");
+  const canExecute = checkPermission(session?.user?.roles || [], "export:execute");
 
   // State
   const [exports, setExports] = useState<ExportJob[]>([]);

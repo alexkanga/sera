@@ -99,23 +99,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const role = await db.role.create({
+    // Use create with include to avoid double query (fix 1.10)
+    const createdRole = await db.role.create({
       data: {
         code: validated.code,
         name: validated.name,
         description: validated.description,
+        permissions: validated.permissionIds.length > 0
+          ? {
+              create: validated.permissionIds.map((permissionId: string) => ({ permissionId })),
+            }
+          : undefined,
+      },
+      include: {
+        permissions: { include: { permission: true } },
       },
     });
-
-    // Assigner les permissions
-    if (validated.permissionIds && validated.permissionIds.length > 0) {
-      await db.rolePermission.createMany({
-        data: validated.permissionIds.map((permissionId: string) => ({
-          roleId: role.id,
-          permissionId,
-        })),
-      });
-    }
 
     // Journal d'audit
     await db.auditLog.create({
@@ -123,32 +122,25 @@ export async function POST(request: NextRequest) {
         userId: currentUser.id,
         action: "CREATE",
         entity: "Role",
-        entityId: role.id,
+        entityId: createdRole.id,
         newValue: JSON.stringify({
-          code: role.code,
-          name: role.name,
+          code: createdRole.code,
+          name: createdRole.name,
           permissionIds: validated.permissionIds,
         }),
-        details: `Création du rôle ${role.name} (${role.code})`,
-      },
-    });
-
-    const createdRole = await db.role.findUnique({
-      where: { id: role.id },
-      include: {
-        permissions: { include: { permission: true } },
+        details: `Création du rôle ${createdRole.name} (${createdRole.code})`,
       },
     });
 
     return NextResponse.json(
       {
         data: {
-          id: createdRole!.id,
-          code: createdRole!.code,
-          name: createdRole!.name,
-          description: createdRole!.description,
-          isSystem: createdRole!.isSystem,
-          permissions: createdRole!.permissions.map((rp) => ({
+          id: createdRole.id,
+          code: createdRole.code,
+          name: createdRole.name,
+          description: createdRole.description,
+          isSystem: createdRole.isSystem,
+          permissions: createdRole.permissions.map((rp) => ({
             id: rp.permission.id,
             code: rp.permission.code,
             name: rp.permission.name,

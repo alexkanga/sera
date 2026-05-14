@@ -69,6 +69,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -139,18 +140,6 @@ const ACCEPTED_TYPES = [
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "import:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -231,7 +220,7 @@ export function ImportSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canExecute = hasPermission(session?.user?.roles ?? [], "import:execute");
+  const canExecute = checkPermission(session?.user?.roles ?? [], "import:execute");
 
   // ----- Stats state -----
   const [stats, setStats] = useState<ImportStats | null>(null);

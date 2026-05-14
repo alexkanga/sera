@@ -75,6 +75,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -138,18 +139,6 @@ const PRIORITY_OPTIONS = [
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "acbf:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -201,10 +190,10 @@ export function AcbfDeliverablesSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "acbf:read");
-  const canCreate = hasPermission(session?.user?.roles ?? [], "acbf:create");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "acbf:update");
-  const canArchive = hasPermission(session?.user?.roles ?? [], "acbf:archive");
+  const canRead = checkPermission(session?.user?.roles ?? [], "acbf:read");
+  const canCreate = checkPermission(session?.user?.roles ?? [], "acbf:create");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "acbf:update");
+  const canArchive = checkPermission(session?.user?.roles ?? [], "acbf:archive");
 
   // ----- List state -----
   const [deliverables, setDeliverables] = useState<AcbfDeliverable[]>([]);

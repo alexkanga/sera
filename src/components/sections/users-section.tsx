@@ -91,6 +91,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -154,16 +155,6 @@ const ITEMS_PER_PAGE = 10;
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some((p) => p === permission || p === "users:*" || p === "admin:*")
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -194,10 +185,10 @@ export function UsersSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "users:read");
-  const canCreate = hasPermission(session?.user?.roles ?? [], "users:create");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "users:update");
-  const canArchive = hasPermission(session?.user?.roles ?? [], "users:archive");
+  const canRead = checkPermission(session?.user?.roles ?? [], "users:read");
+  const canCreate = checkPermission(session?.user?.roles ?? [], "users:create");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "users:update");
+  const canArchive = checkPermission(session?.user?.roles ?? [], "users:archive");
 
   // ----- List state -----
   const [users, setUsers] = useState<User[]>([]);

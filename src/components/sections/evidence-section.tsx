@@ -87,6 +87,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -196,18 +197,6 @@ const CATEGORY_OPTIONS = [
 // ============================================================
 // Permission Helpers
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "evidence:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -297,11 +286,11 @@ export function EvidenceSection() {
   const { data: session } = useSession();
 
   // ----- Permission checks -----
-  const canRead = hasPermission(session?.user?.roles ?? [], "evidence:read");
-  const canCreate = hasPermission(session?.user?.roles ?? [], "evidence:create");
-  const canUpdate = hasPermission(session?.user?.roles ?? [], "evidence:update");
-  const canArchive = hasPermission(session?.user?.roles ?? [], "evidence:archive");
-  const canVerify = hasPermission(session?.user?.roles ?? [], "evidence:verify");
+  const canRead = checkPermission(session?.user?.roles ?? [], "evidence:read");
+  const canCreate = checkPermission(session?.user?.roles ?? [], "evidence:create");
+  const canUpdate = checkPermission(session?.user?.roles ?? [], "evidence:update");
+  const canArchive = checkPermission(session?.user?.roles ?? [], "evidence:archive");
+  const canVerify = checkPermission(session?.user?.roles ?? [], "evidence:verify");
 
   // ----- Stats state -----
   const [stats, setStats] = useState<EvidenceStats | null>(null);

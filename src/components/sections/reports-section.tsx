@@ -75,6 +75,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { checkPermission } from "@/lib/client-permissions";
 
 // ============================================================
 // Types
@@ -230,18 +231,6 @@ const TYPE_COLORS: Record<string, string> = {
 // ============================================================
 // Permission Helper
 // ============================================================
-
-function hasPermission(
-  roles: Array<{ permissions: string[] }>,
-  permission: string
-): boolean {
-  return roles.some((r) =>
-    r.permissions.some(
-      (p) => p === permission || p === "reports:*" || p === "admin:*"
-    )
-  );
-}
-
 // ============================================================
 // Date formatting
 // ============================================================
@@ -559,12 +548,12 @@ function renderReportData(jsonStr: string | null): React.ReactNode {
 
 export function ReportsSection() {
   const { data: session } = useSession();
-  const canRead = hasPermission(session?.user?.roles ?? [], "reports:read");
-  const canCreate = hasPermission(
+  const canRead = checkPermission(session?.user?.roles ?? [], "reports:read");
+  const canCreate = checkPermission(
     session?.user?.roles ?? [],
     "reports:create"
   );
-  const canValidate = hasPermission(
+  const canValidate = checkPermission(
     session?.user?.roles ?? [],
     "reports:validate"
   );
