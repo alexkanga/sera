@@ -1543,3 +1543,37 @@ Stage Summary:
 - Frontend: Shared PaginationControls and StatusBadge (with gender="m"), optimized view dialog, cleaner AlertDialog
 - Shared: StatusBadge now supports gender prop for correct French grammar (Actif/Active, Inactif/Inactive, Archivé/Archivée)
 - 5 files changed, 158 insertions, 174 deletions (net reduction)
+
+---
+Task ID: Module4-CRITIQUE
+Agent: Main Agent
+Task: Module 4 — Référentiel ACBF CRITIQUE Optimizations (5 fixes)
+
+Work Log:
+- Evaluated all 4 Module 4 route files + 2 frontend sections against optimized Modules 1-3 patterns
+- Identified 5 CRITIQUE issues
+- Fix 4.1 — Case-insensitive search: Added `mode: "insensitive"` to acbf-domains and acbf-deliverables GET routes OR conditions
+- Fix 4.2 — Pagination validation: Clamped page ≥ 1, limit 1-100, NaN defaults in both GET routes
+- Fix 4.3 — IP/User-Agent in audit logs: Added `getIpAndUserAgent(request)` to all 8 audit events across 4 route files
+- Fix 4.4 — PATCH archive/restore validation: Replaced `body as { action: "archive" | "restore" }` with `archivePermissionSchema.parse(body)` + ZodError catch in both [id] routes
+- Fix 4.5 — Archive cascade + archived domain guard:
+  - Archiving a domain now cascades: `db.acbfDeliverable.updateMany({ where: { domainId: id, deletedAt: null }, data: { deletedAt: new Date(), isActive: false } })`
+  - Restoring a domain now cascades: `db.acbfDeliverable.updateMany({ where: { domainId: id, deletedAt: { not: null } }, data: { deletedAt: null, isActive: true } })`
+  - Creating deliverable in archived domain blocked with `existingDomain.deletedAt` check
+  - Moving deliverable to archived domain blocked with `domainExists.deletedAt` check
+- Centralized ACBF validation schemas in validations.ts: createAcbfDomainSchema, updateAcbfDomainSchema, createAcbfDeliverableSchema, updateAcbfDeliverableSchema
+- Removed redundant formattedDomains/formattedDeliverables mappings in GET routes
+- Frontend: Replaced inline StatusBadge with shared `<StatusBadge gender="m" />` in both sections
+- Frontend: Replaced inline pagination with shared `<PaginationControls />` in both sections
+- Frontend: Archive dialog now warns about cascade effects on deliverables
+- Lint check: clean ✅
+- Dev server: running ✅
+- Pushed to GitHub: https://github.com/alexkanga/sera.git ✅
+
+Stage Summary:
+- Module 4 CRITIQUE optimizations complete with 5 fixes across 7 files
+- Backend: Case-insensitive search, pagination validation, IP/UA audit, Zod PATCH validation, cascade archive/restore, archived domain guard
+- Frontend: Shared StatusBadge (gender="m") + PaginationControls, cascade-aware archive dialog
+- Validations: 4 new centralized schemas for ACBF domains and deliverables
+- 7 files changed, 160 insertions, 262 deletions (net reduction)
+- Awaiting authorization for ÉLEVÉ, MOYEN, MINEUR fixes
