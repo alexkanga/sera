@@ -1780,3 +1780,37 @@ Stage Summary:
 - View loading: spinner shown while fetching RACI details
 - Imports cleaned: removed z, ChevronLeft, ChevronRight, local schema; added centralized imports
 - Dead code removed: empty Permission Helpers section, local Zod Schemas section
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Module 8 — Gantt dynamique (14 Optimisations)
+
+Work Log:
+- Read all Module 8 files: gantt/route.ts, gantt/stats/route.ts, gantt-section.tsx
+- Identified 14 issues: 3 CRITIQUE, 4 ÉLEVÉ, 4 MOYEN, 3 MINEUR
+- C1: Added ganttFilterSchema to validations.ts, removed local filterSchema from route
+- C2: Added getIpAndUserAgent() and audit logging to both gantt routes (GET /api/gantt and GET /api/gantt/stats)
+- C3: Replaced findMany (memory bomb) with $queryRaw aggregate for avg duration calculation in stats
+- E1: Replaced forEach with for...of in gantt/route.ts (removed, was backend grouping) and gantt-section.tsx (3 instances)
+- E2: Added debouncedSearch pattern (300ms) to prevent API flooding on every keystroke
+- E3: Added viewLoading state and Loader2 spinner in handleView dialog
+- E4: Removed unused backend grouping computation (frontend handles grouping locally, backend `grouped` field was ignored)
+- M1: Replaced local getStatusBadge/getPriorityBadge with shared PriorityBadge and ActivityStatusBadge from activity-badges.tsx
+- M2: Changed TODAY from module-level `const TODAY = new Date()` to `const today = useMemo(() => new Date(), [])`
+- M3: Removed empty "Permission Helpers" section
+- M4: Added null handling for timelineStart/timelineEnd in stats response
+- m1: Cleaned unused imports (Filter, Eye, Loader2 was kept for spinner, unused date-fns: startOfMonth, endOfMonth, startOfQuarter, endOfQuarterWeek)
+- m2: Added NaN protection for null progressRate from Prisma aggregate
+- m3: Added 404 handling in handleView with toast error and auto-refresh
+- Lint check: clean ✅
+- Dev server: running ✅
+- Pushed to GitHub: commit afa9ace
+
+Stage Summary:
+- Module 8 (Gantt dynamique) optimized with 14 fixes
+- 4 files modified: gantt/route.ts, gantt/stats/route.ts, gantt-section.tsx, validations.ts
+- +158/-149 lines changed
+- Critical fix: Stats route memory bomb resolved (findMany → $queryRaw aggregate)
+- Critical fix: IP/UA audit logging added to both gantt routes
+- Cumulative total: 127 fixes across 8 modules (113 from modules 1-7 + 14 from module 8)
