@@ -125,22 +125,30 @@ export async function GET() {
       byPriority[item.priority ?? "Non défini"] = item._count.priority;
     }
 
-    // Enrich strategic axis counts with axis names
+    // E1: Fix N+1 query — batch load strategic axes instead of sequential findUnique
+    const axisIds = byStrategicAxisRaw
+      .map((item) => item.strategicAxisId)
+      .filter((id): id is string => id !== null);
+
+    const axes = await db.strategicAxis.findMany({
+      where: { id: { in: axisIds } },
+      select: { id: true, code: true, name: true },
+    });
+    const axisMap = new Map(axes.map((a) => [a.id, a]));
+
+    // E3: Use axisId key instead of strategicAxisId for frontend alignment
     const byStrategicAxis: Array<{
-      strategicAxisId: string;
+      axisId: string;
       axisCode: string;
       axisName: string;
       count: number;
     }> = [];
     for (const item of byStrategicAxisRaw) {
       if (item.strategicAxisId) {
-        const axis = await db.strategicAxis.findUnique({
-          where: { id: item.strategicAxisId },
-          select: { code: true, name: true },
-        });
+        const axis = axisMap.get(item.strategicAxisId);
         if (axis) {
           byStrategicAxis.push({
-            strategicAxisId: item.strategicAxisId,
+            axisId: item.strategicAxisId,
             axisCode: axis.code,
             axisName: axis.name,
             count: item._count.strategicAxisId,
@@ -149,16 +157,20 @@ export async function GET() {
       }
     }
 
+    // E3: Align stats response with frontend interface
     return NextResponse.json({
       data: {
-        totalActive,
-        raciRoleDistribution,
+        total: totalActive,
+        withR: raciRoleDistribution.responsibleFilled,
+        withA: raciRoleDistribution.accountableFilled,
+        withC: raciRoleDistribution.contributorsFilled,
+        withI: raciRoleDistribution.informedFilled,
         byPriority,
         byStrategicAxis,
-        linkedUsersCount,
-        linkedDeliverablesCount,
-        linkedActivitiesCount,
-        overdueCount,
+        withLinkedUsers: linkedUsersCount,
+        withLinkedDeliverables: linkedDeliverablesCount,
+        withLinkedActivities: linkedActivitiesCount,
+        overdue: overdueCount,
       },
     });
   } catch (error) {

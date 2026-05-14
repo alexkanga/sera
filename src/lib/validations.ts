@@ -392,3 +392,84 @@ export const ptaConsolideExportSchema = z.object({
   activityStatus: activityStatusEnum.optional(),
   responsibleId: z.string().optional(),
 });
+
+// ─── RACI Matrix schemas (Module 7) ──────────────────────────────────────
+
+const raciTextField = z
+  .string()
+  .max(2000, "Maximum 2000 caractères")
+  .optional()
+  .nullable();
+
+const raciShortTextField = z
+  .string()
+  .max(500, "Maximum 500 caractères")
+  .optional()
+  .nullable();
+
+export const createRaciSchema = z.object({
+  acbfDeliverableId: z.string().optional().nullable(),
+  activityId: z.string().optional().nullable(),
+  strategicAxisId: z.string().optional().nullable(),
+  responsible: raciShortTextField,
+  responsibleUserId: z.string().optional().nullable(),
+  accountable: raciShortTextField,
+  accountableUserId: z.string().optional().nullable(),
+  contributors: raciTextField,
+  informed: raciTextField,
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
+  indicativeDeadline: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? new Date(val) : null)),
+  verificationSource: raciTextField,
+  comments: raciTextField,
+});
+
+export const updateRaciSchema = z.object({
+  acbfDeliverableId: z.string().optional().nullable(),
+  activityId: z.string().optional().nullable(),
+  strategicAxisId: z.string().optional().nullable(),
+  responsible: raciShortTextField,
+  responsibleUserId: z.string().optional().nullable(),
+  accountable: raciShortTextField,
+  accountableUserId: z.string().optional().nullable(),
+  contributors: raciTextField,
+  informed: raciTextField,
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
+  indicativeDeadline: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? new Date(val) : val === null ? null : undefined)),
+  verificationSource: raciTextField,
+  comments: raciTextField,
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});
+
+export const raciActionSchema = z.object({
+  action: z.enum(["archive", "restore"], {
+    message: "Action invalide. Utilisez 'archive' ou 'restore'",
+  }),
+});
+
+// Frontend form schema
+export const raciFormSchema = z.object({
+  acbfDeliverableId: z.string().optional().nullable(),
+  activityId: z.string().optional().nullable(),
+  strategicAxisId: z.string().optional().nullable(),
+  responsible: z.string().max(500, "Maximum 500 caractères").optional().nullable(),
+  responsibleUserId: z.string().optional().nullable(),
+  accountable: z.string().max(500, "Maximum 500 caractères").optional().nullable(),
+  accountableUserId: z.string().optional().nullable(),
+  contributors: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  informed: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
+  indicativeDeadline: z.string().optional().nullable(),
+  verificationSource: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+  comments: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
+});
+
+export type RaciFormValues = z.infer<typeof raciFormSchema>;

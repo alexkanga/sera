@@ -16,8 +16,6 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
   Trash2,
   Users,
   Calendar,
@@ -25,7 +23,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { z } from "zod";
+import { raciFormSchema, type RaciFormValues } from "@/lib/validations";
+import { PaginationControls } from "@/components/shared/org-shared";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,28 +153,6 @@ interface UserOption {
 }
 
 // ============================================================
-// Zod Schemas
-// ============================================================
-
-const raciFormSchema = z.object({
-  acbfDeliverableId: z.string().optional().nullable(),
-  activityId: z.string().optional().nullable(),
-  strategicAxisId: z.string().optional().nullable(),
-  responsible: z.string().max(500, "Maximum 500 caractères").optional().nullable(),
-  responsibleUserId: z.string().optional().nullable(),
-  accountable: z.string().max(500, "Maximum 500 caractères").optional().nullable(),
-  accountableUserId: z.string().optional().nullable(),
-  contributors: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  informed: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
-  indicativeDeadline: z.string().optional().nullable(),
-  verificationSource: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  comments: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-});
-
-type RaciFormValues = z.infer<typeof raciFormSchema>;
-
-// ============================================================
 // Constants
 // ============================================================
 
@@ -187,9 +164,6 @@ const PRIORITY_OPTIONS = [
   { value: "Basse", label: "Basse" },
 ] as const;
 
-// ============================================================
-// Permission Helpers
-// ============================================================
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -342,7 +316,7 @@ export function RaciSection() {
   const canRead = checkPermission(session?.user?.roles ?? [], "raci:read");
   const canCreate = checkPermission(session?.user?.roles ?? [], "raci:create");
   const canUpdate = checkPermission(session?.user?.roles ?? [], "raci:update");
-  const canArchive = checkPermission(session?.user?.roles ?? [], "raci:archive");
+  const canArchive = checkPermission(session?.user?.roles ?? [], "raci:update");
 
   // ----- Stats state -----
   const [stats, setStats] = useState<RaciStats | null>(null);
@@ -353,6 +327,7 @@ export function RaciSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [axisFilter, setAxisFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [deliverableFilter, setDeliverableFilter] = useState("");
@@ -366,6 +341,7 @@ export function RaciSection() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [viewLoading, setViewLoading] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   // ----- Selected entry -----
@@ -438,7 +414,7 @@ export function RaciSection() {
       params.set("page", page.toString());
       params.set("limit", ITEMS_PER_PAGE.toString());
 
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (axisFilter) params.set("strategicAxisId", axisFilter);
       if (priorityFilter) params.set("priority", priorityFilter);
       if (deliverableFilter) params.set("acbfDeliverableId", deliverableFilter);
@@ -462,7 +438,7 @@ export function RaciSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, axisFilter, priorityFilter, deliverableFilter, statusFilter]);
+  }, [page, debouncedSearch, axisFilter, priorityFilter, deliverableFilter, statusFilter]);
 
   useEffect(() => {
     if (canRead) {
@@ -536,6 +512,13 @@ export function RaciSection() {
   // ============================================================
   // Reset page when filters change
   // ============================================================
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     setPage(1);
@@ -632,6 +615,7 @@ export function RaciSection() {
   async function handleView(item: RaciMatrix) {
     setSelectedRaci(item);
     setViewDialogOpen(true);
+    setViewLoading(true);
 
     try {
       const res = await fetch(`/api/raci/${item.id}`);
@@ -641,6 +625,8 @@ export function RaciSection() {
       }
     } catch {
       // Keep existing data
+    } finally {
+      setViewLoading(false);
     }
   }
 
@@ -1366,67 +1352,13 @@ export function RaciSection() {
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {total > 0
-                    ? `Affichage de ${(page - 1) * ITEMS_PER_PAGE + 1} à ${Math.min(page * ITEMS_PER_PAGE, total)} sur ${total}`
-                    : "Aucun résultat"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                    className="h-8"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Précédent
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from(
-                      { length: Math.min(totalPages, 5) },
-                      (_, i) => {
-                        let pageNum: number;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (page <= 3) {
-                          pageNum = i + 1;
-                        } else if (page >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setPage(pageNum)}
-                            className={`h-8 w-8 p-0 ${
-                              page === pageNum
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : ""
-                            }`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      }
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page >= totalPages}
-                    className="h-8"
-                  >
-                    Suivant
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPage}
+              />
             </>
           )}
         </CardContent>
@@ -1758,6 +1690,12 @@ export function RaciSection() {
 
           {selectedRaci && (
             <div className="space-y-6 py-2">
+              {viewLoading && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-emerald-600 mr-2" />
+                  <span className="text-sm text-slate-500">Chargement des détails...</span>
+                </div>
+              )}
               {/* Liaison */}
               <div>
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">

@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import { updateRaciSchema, raciActionSchema } from "@/lib/validations";
 import { z } from "zod";
-
-const updateRaciSchema = z.object({
-  acbfDeliverableId: z.string().optional().nullable(),
-  activityId: z.string().optional().nullable(),
-  strategicAxisId: z.string().optional().nullable(),
-  responsible: z.string().optional().nullable(),
-  responsibleUserId: z.string().optional().nullable(),
-  accountable: z.string().optional().nullable(),
-  accountableUserId: z.string().optional().nullable(),
-  contributors: z.string().optional().nullable(),
-  informed: z.string().optional().nullable(),
-  priority: z.string().optional().nullable(),
-  indicativeDeadline: z
-    .string()
-    .optional()
-    .nullable()
-    .transform((val) => (val ? new Date(val) : val === null ? null : undefined)),
-  verificationSource: z.string().optional().nullable(),
-  comments: z.string().optional().nullable(),
-});
 
 // GET /api/raci/[id] — Détail d'une entrée RACI
 export async function GET(
@@ -121,10 +103,11 @@ export async function PUT(
     const body = await request.json();
     const validated = updateRaciSchema.parse(body);
 
-    // Verify acbfDeliverableId exists if changed
+    // C4: Archived FK checks
     if (validated.acbfDeliverableId) {
       const deliverable = await db.acbfDeliverable.findUnique({
         where: { id: validated.acbfDeliverableId },
+        include: { domain: { select: { deletedAt: true } } },
       });
       if (!deliverable) {
         return NextResponse.json(
@@ -132,9 +115,20 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (deliverable.deletedAt) {
+        return NextResponse.json(
+          { error: "Le livrable ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.domain?.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine du livrable ACBF est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify activityId exists if changed
     if (validated.activityId) {
       const activity = await db.activity.findUnique({
         where: { id: validated.activityId },
@@ -145,9 +139,14 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (activity.deletedAt) {
+        return NextResponse.json(
+          { error: "L'activité spécifiée est archivée" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify strategicAxisId exists if changed
     if (validated.strategicAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.strategicAxisId },
@@ -158,9 +157,14 @@ export async function PUT(
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify responsibleUserId exists if changed
     if (validated.responsibleUserId) {
       const user = await db.user.findUnique({
         where: { id: validated.responsibleUserId },
@@ -173,7 +177,6 @@ export async function PUT(
       }
     }
 
-    // Verify accountableUserId exists if changed
     if (validated.accountableUserId) {
       const user = await db.user.findUnique({
         where: { id: validated.accountableUserId },
@@ -253,6 +256,8 @@ export async function PUT(
       newValue[key] = updateData[key];
     }
 
+    // C2: Audit log with IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -262,6 +267,8 @@ export async function PUT(
         oldValue: JSON.stringify(oldValue),
         newValue: JSON.stringify(newValue),
         details: `Mise à jour de l'entrée RACI ${id}`,
+        ipAddress: ip,
+        userAgent,
       },
     });
 
@@ -302,7 +309,24 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+
+    // C1: Use raciActionSchema instead of type assertion
+    let action: "archive" | "restore";
+    try {
+      const parsed = raciActionSchema.parse(body);
+      action = parsed.action;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return NextResponse.json(
+          { error: "Données invalides", details: error.issues },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
+
+    // C2: Get IP and User-Agent for audit logs
+    const { ip, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
       const hasAccess = userHasPermission(currentUser, "raci:update");
@@ -327,6 +351,8 @@ export async function PATCH(
             deletedAt: updatedRaci.deletedAt,
           }),
           details: `Archive de l'entrée RACI ${id}`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 
@@ -354,6 +380,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de l'entrée RACI ${id}`,
+          ipAddress: ip,
+          userAgent,
         },
       });
 

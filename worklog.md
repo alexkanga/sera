@@ -1697,3 +1697,86 @@ Stage Summary:
 - Security: PATCH actions now Zod-validated, validationStatus workflow enforced, IP/UA in all audit logs
 - Quality: Centralized schemas, shared PaginationControls, debounced search, FK archived checks
 - Stats: 6 files changed, 350 insertions, 200 deletions (net +150 lines with new schemas)
+
+---
+Task ID: 1
+Agent: RACI Backend Optimization Agent
+Task: Module 7 (RACI) — Backend API Optimizations
+
+Work Log:
+- Read worklog.md for project context and established patterns ✅
+- Read all 4 target files to understand current implementation ✅
+- Read src/lib/request-context.ts to confirm getIpAndUserAgent function signature ✅
+- Read Prisma schema to confirm RaciMatrix model and FK relationships ✅
+- Updated `src/lib/validations.ts` — Added RACI schemas (C3, C1, M2):
+  - Added `raciTextField` (max 2000), `raciShortTextField` (max 500) helper fields
+  - Added `createRaciSchema` with proper Zod enum for priority, date transform for indicativeDeadline
+  - Added `updateRaciSchema` with .refine() for at-least-one-field validation, date transform preserving undefined
+  - Added `raciActionSchema` with z.enum(["archive", "restore"]) and custom message
+  - Added `raciFormSchema` for frontend form validation
+  - Exported `RaciFormValues` type
+- Rewrote `src/app/api/raci/route.ts` (C2, C3, C4, E2):
+  - C3: Removed local `createRaciSchema`, now imported from `@/lib/validations`
+  - C2: Added `getIpAndUserAgent(request)` → `ipAddress` and `userAgent` to POST audit log
+  - C4: Added archived FK checks for acbfDeliverableId (also checks domain.deletedAt), activityId, strategicAxisId, responsibleUserId, accountableUserId
+  - E2: Fixed pagination validation: `page = Math.max(1, parseInt(...))`, `limit = Math.min(200, Math.max(1, parseInt(...)))`
+- Rewrote `src/app/api/raci/[id]/route.ts` (C1, C2, C3, C4):
+  - C3: Removed local `updateRaciSchema`, imported from `@/lib/validations`
+  - C1: PATCH handler now uses `raciActionSchema.parse(body)` with proper Zod error handling (error.issues) instead of type assertion
+  - C2: Added `getIpAndUserAgent(request)` → `ipAddress` and `userAgent` to all 3 audit logs (PUT, PATCH archive, PATCH restore)
+  - C4: Added archived FK checks for acbfDeliverableId (also checks domain.deletedAt), activityId, strategicAxisId, responsibleUserId, accountableUserId in PUT
+- Rewrote `src/app/api/raci/stats/route.ts` (E1, E3):
+  - E1: Fixed N+1 query — replaced sequential `for...of` with `findUnique` by batch `findMany` with `where: { id: { in: axisIds } }` and `axisMap`
+  - E3: Aligned stats response with frontend interface: renamed keys (totalActive→total, raciRoleDistribution→flat withR/withA/withC/withI, linkedUsersCount→withLinkedUsers, linkedDeliverablesCount→withLinkedDeliverables, linkedActivitiesCount→withLinkedActivities, overdueCount→overdue)
+  - E3: Changed `strategicAxisId` key to `axisId` in byStrategicAxis items for frontend alignment
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- RACI backend API fully optimized with 4 files modified
+- C1: PATCH action validation uses Zod schema instead of type assertion
+- C2: All audit logs (POST, PUT, PATCH archive, PATCH restore) now include IP address and User-Agent
+- C3: Centralized RACI schemas in src/lib/validations.ts (no more local schema definitions)
+- C4: Archived FK checks for all 5 foreign key references (acbfDeliverable + domain, activity, strategicAxis, responsibleUser, accountableUser)
+- E1: Stats N+1 query fixed with batch findMany + Map lookup
+- E2: Pagination validation enforces page >= 1 and 1 <= limit <= 200
+- E3: Stats response aligned with frontend interface (flat keys, axisId instead of strategicAxisId)
+- All Zod v4 compatible (error.issues, not error.errors)
+
+---
+Task ID: 2
+Agent: Module 8 Frontend Optimization Agent
+Task: Module 7 (RACI) — Frontend Optimizations
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read raci-section.tsx and validations.ts to understand current state ✅
+- E4: Fixed permission mismatch — changed `raci:archive` → `raci:update` on canArchive check (aligns with backend PATCH archive/restore which checks `raci:update`) ✅
+- M1: Replaced custom pagination div (60+ lines) with shared `<PaginationControls>` component from `@/components/shared/org-shared` ✅
+- M4: Removed empty "Permission Helpers" comment section (3 lines) ✅
+- m1: Added debounce to search:
+  - Added `debouncedSearch` state
+  - Added useEffect with 300ms setTimeout debounce
+  - Changed fetchRaci to use `debouncedSearch` in URL params and dependency array
+  - Kept `search` (not debounced) in the "Reset page" useEffect for immediate page reset ✅
+- m2: Added loading state to handleView:
+  - Added `viewLoading` state
+  - Updated handleView to set viewLoading=true on open, false in finally
+  - Added Loader2 spinner + "Chargement des détails..." text at top of view dialog content ✅
+- m3: Cleaned unused imports:
+  - Removed `import { z } from "zod"` (replaced by raciFormSchema from validations)
+  - Removed `ChevronLeft` and `ChevronRight` from lucide-react imports (now in PaginationControls)
+  - Added `import { raciFormSchema, type RaciFormValues } from "@/lib/validations"`
+  - Added `import { PaginationControls } from "@/components/shared/org-shared"`
+  - Removed local `raciFormSchema` definition and `type RaciFormValues` (now imported from validations)
+  - Removed local "Zod Schemas" section header comments ✅
+- Ran lint check: all clean ✅
+
+Stage Summary:
+- 6 optimizations applied to raci-section.tsx
+- Permission fix: canArchive now checks raci:update (aligned with backend)
+- Pagination: replaced 60-line custom implementation with shared PaginationControls
+- Search debounce: 300ms delay prevents excessive API calls while typing
+- View loading: spinner shown while fetching RACI details
+- Imports cleaned: removed z, ChevronLeft, ChevronRight, local schema; added centralized imports
+- Dead code removed: empty Permission Helpers section, local Zod Schemas section

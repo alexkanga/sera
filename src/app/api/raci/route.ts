@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import { createRaciSchema } from "@/lib/validations";
 import { z } from "zod";
-
-const createRaciSchema = z.object({
-  acbfDeliverableId: z.string().optional().nullable(),
-  activityId: z.string().optional().nullable(),
-  strategicAxisId: z.string().optional().nullable(),
-  responsible: z.string().optional().nullable(),
-  responsibleUserId: z.string().optional().nullable(),
-  accountable: z.string().optional().nullable(),
-  accountableUserId: z.string().optional().nullable(),
-  contributors: z.string().optional().nullable(),
-  informed: z.string().optional().nullable(),
-  priority: z.string().optional().nullable(),
-  indicativeDeadline: z
-    .string()
-    .optional()
-    .nullable()
-    .transform((val) => (val ? new Date(val) : null)),
-  verificationSource: z.string().optional().nullable(),
-  comments: z.string().optional().nullable(),
-});
 
 // GET /api/raci — Liste des entrées RACI
 export async function GET(request: NextRequest) {
@@ -45,8 +27,9 @@ export async function GET(request: NextRequest) {
     const responsibleUserId = searchParams.get("responsibleUserId") || "";
     const accountableUserId = searchParams.get("accountableUserId") || "";
     const status = searchParams.get("status") || ""; // "active", "archived", "all"
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    // E2: Validate page/limit
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "20")));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -170,10 +153,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createRaciSchema.parse(body);
 
-    // Verify acbfDeliverableId exists if provided
+    // C4: Archived FK checks
     if (validated.acbfDeliverableId) {
       const deliverable = await db.acbfDeliverable.findUnique({
         where: { id: validated.acbfDeliverableId },
+        include: { domain: { select: { deletedAt: true } } },
       });
       if (!deliverable) {
         return NextResponse.json(
@@ -181,9 +165,20 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (deliverable.deletedAt) {
+        return NextResponse.json(
+          { error: "Le livrable ACBF spécifié est archivé" },
+          { status: 400 }
+        );
+      }
+      if (deliverable.domain?.deletedAt) {
+        return NextResponse.json(
+          { error: "Le domaine du livrable ACBF est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify activityId exists if provided
     if (validated.activityId) {
       const activity = await db.activity.findUnique({
         where: { id: validated.activityId },
@@ -194,9 +189,14 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (activity.deletedAt) {
+        return NextResponse.json(
+          { error: "L'activité spécifiée est archivée" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify strategicAxisId exists if provided
     if (validated.strategicAxisId) {
       const axis = await db.strategicAxis.findUnique({
         where: { id: validated.strategicAxisId },
@@ -207,9 +207,14 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (axis.deletedAt) {
+        return NextResponse.json(
+          { error: "L'axe stratégique spécifié est archivé" },
+          { status: 400 }
+        );
+      }
     }
 
-    // Verify responsibleUserId exists if provided
     if (validated.responsibleUserId) {
       const user = await db.user.findUnique({
         where: { id: validated.responsibleUserId },
@@ -222,7 +227,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify accountableUserId exists if provided
     if (validated.accountableUserId) {
       const user = await db.user.findUnique({
         where: { id: validated.accountableUserId },
@@ -279,7 +283,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Journal d'audit
+    // C2: Journal d'audit with IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -297,6 +302,8 @@ export async function POST(request: NextRequest) {
           priority: raciEntry.priority,
         }),
         details: `Création de l'entrée RACI ${raciEntry.id}`,
+        ipAddress: ip,
+        userAgent,
       },
     });
 
