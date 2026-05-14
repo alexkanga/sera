@@ -6,6 +6,7 @@ declare module "next-auth" {
     ptaCode?: string | null;
     position?: string | null;
     department?: string | null;
+    passwordChangedAt?: string | null;
     roles: Array<{
       id: string;
       code: string;
@@ -29,7 +30,9 @@ declare module "next-auth" {
         name: string;
         permissions: string[];
       }>;
+      passwordChangedAt?: string | null;
     };
+    error?: string;
   }
 }
 
@@ -39,6 +42,8 @@ declare module "next-auth/jwt" {
     ptaCode?: string | null;
     position?: string | null;
     department?: string | null;
+    passwordChangedAt?: string | null;
+    error?: string;
     roles: Array<{
       id: string;
       code: string;

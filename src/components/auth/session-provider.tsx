@@ -13,7 +13,7 @@ function SessionWatcher({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (
       session &&
-      (session as unknown as Record<string, unknown>).error === "PasswordChanged"
+      session.error === "PasswordChanged"
     ) {
       signOut({ callbackUrl: "/login" });
     }

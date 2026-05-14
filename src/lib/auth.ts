@@ -227,8 +227,8 @@ export const authOptions: NextAuthOptions = {
         }>;
       }
       // If password was changed, force sign out by adding error flag
-      if ((token as Record<string, unknown>).error === "PasswordChanged") {
-        (session as Record<string, unknown>).error = "PasswordChanged";
+      if (token.error === "PasswordChanged") {
+        session.error = "PasswordChanged";
       }
       return session;
     },
