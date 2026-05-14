@@ -342,3 +342,53 @@ export const activityFormSchema = z.object({
 });
 
 export type ActivityFormValues = z.infer<typeof activityFormSchema>;
+
+// ─── PTA Consolide schemas (Module 6) ──────────────────────────────────────
+
+export const activityStatusEnum = z.enum([
+  "Non démarré",
+  "En cours",
+  "Réalisé",
+  "En retard",
+  "Suspendu",
+  "À reprogrammer",
+  "Terminé",
+  "Annulé",
+]);
+
+export const ptaConsolideGroupBySchema = z.enum([
+  "direction",
+  "axis",
+  "domain",
+  "responsible",
+  "priority",
+  "status",
+]);
+
+export const ptaConsolideFilterSchema = z.object({
+  search: z.string().optional(),
+  directionId: z.string().optional(),
+  primaryAxisId: z.string().optional(),
+  secondaryAxisId: z.string().optional(),
+  acbfDomainId: z.string().optional(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
+  validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional(),
+  activityStatus: activityStatusEnum.optional(),
+  responsibleId: z.string().optional(),
+  groupBy: ptaConsolideGroupBySchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const ptaConsolideExportSchema = z.object({
+  format: z.enum(["csv", "json"]).default("json"),
+  search: z.string().optional(),
+  directionId: z.string().optional(),
+  primaryAxisId: z.string().optional(),
+  secondaryAxisId: z.string().optional(),
+  acbfDomainId: z.string().optional(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
+  validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional(),
+  activityStatus: activityStatusEnum.optional(),
+  responsibleId: z.string().optional(),
+});

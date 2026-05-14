@@ -1,36 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { z } from "zod";
+import { ptaConsolideFilterSchema } from "@/lib/validations";
 
 // ============================================================
-// GET /api/pta-consolide?mode=stats — Statistiques consolidées
 // GET /api/pta-consolide — Liste consolidée avec filtres et groupBy
+// Note: Stats are served by /api/pta-consolide/stats (dedicated endpoint)
 // ============================================================
-
-const groupBySchema = z.enum([
-  "direction",
-  "axis",
-  "domain",
-  "responsible",
-  "priority",
-  "status",
-]);
-
-const filterSchema = z.object({
-  search: z.string().optional(),
-  directionId: z.string().optional(),
-  primaryAxisId: z.string().optional(),
-  secondaryAxisId: z.string().optional(),
-  acbfDomainId: z.string().optional(),
-  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
-  validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional(),
-  activityStatus: z.string().optional(),
-  responsibleId: z.string().optional(),
-  groupBy: groupBySchema.optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-});
 
 // Common include for consolidated activities
 const consolidatedInclude = {
@@ -66,7 +42,7 @@ function getBaseWhere(): Record<string, unknown> {
 }
 
 // Build filter where clause from query parameters
-function buildFilterWhere(params: z.infer<typeof filterSchema>): Record<string, unknown> {
+function buildFilterWhere(params: z.infer<typeof ptaConsolideFilterSchema>): Record<string, unknown> {
   const where: Record<string, unknown> = getBaseWhere();
 
   if (params.search) {
@@ -112,253 +88,18 @@ function buildFilterWhere(params: z.infer<typeof filterSchema>): Record<string, 
 }
 
 // ============================================================
-// STATS endpoint
-// ============================================================
-async function handleStats() {
-  const baseWhere = getBaseWhere();
-
-  // Run all count queries in parallel
-  const [
-    totalCount,
-    statusCounts,
-    priorityCounts,
-    validationCounts,
-    directionCounts,
-    axisCounts,
-    domainCounts,
-    avgProgress,
-    overdueCount,
-    startingThisMonthCount,
-    highRiskCount,
-  ] = await Promise.all([
-    // Total active activities
-    db.activity.count({ where: baseWhere }),
-
-    // Activities by status
-    db.activity.groupBy({
-      by: ["status"],
-      where: baseWhere,
-      _count: { status: true },
-    }),
-
-    // Activities by priority
-    db.activity.groupBy({
-      by: ["priority"],
-      where: baseWhere,
-      _count: { priority: true },
-    }),
-
-    // Activities by validation status
-    db.activity.groupBy({
-      by: ["validationStatus"],
-      where: baseWhere,
-      _count: { validationStatus: true },
-    }),
-
-    // Activities by direction (with direction names)
-    db.activity.groupBy({
-      by: ["directionId"],
-      where: { ...baseWhere, directionId: { not: null } },
-      _count: { directionId: true },
-      _avg: { progressRate: true },
-    }),
-
-    // Activities by primary axis (with axis names)
-    db.activity.groupBy({
-      by: ["primaryAxisId"],
-      where: { ...baseWhere, primaryAxisId: { not: null } },
-      _count: { primaryAxisId: true },
-      _avg: { progressRate: true },
-    }),
-
-    // Activities by ACBF domain (with domain names)
-    db.activity.groupBy({
-      by: ["acbfDomainId"],
-      where: { ...baseWhere, acbfDomainId: { not: null } },
-      _count: { acbfDomainId: true },
-      _avg: { progressRate: true },
-    }),
-
-    // Average progress rate overall
-    db.activity.aggregate({
-      where: baseWhere,
-      _avg: { progressRate: true },
-    }),
-
-    // Overdue activities (endDate < now and status not "Réalisé")
-    db.activity.count({
-      where: {
-        ...baseWhere,
-        endDate: { lt: new Date() },
-        status: { notIn: ["Réalisé", "Terminé", "Annulé"] },
-      },
-    }),
-
-    // Activities starting this month
-    db.activity.count({
-      where: {
-        ...baseWhere,
-        startDate: {
-          gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          lt: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1),
-        },
-      },
-    }),
-
-    // High-risk activities (those with a risk description filled)
-    db.activity.count({
-      where: {
-        ...baseWhere,
-        riskDescription: { not: "" },
-      },
-    }),
-  ]);
-
-  // Fetch direction names for directionCounts
-  const directionIds = directionCounts
-    .map((d) => d.directionId)
-    .filter((id): id is string => id !== null);
-
-  const directions = directionIds.length > 0
-    ? await db.direction.findMany({
-        where: { id: { in: directionIds } },
-        select: { id: true, code: true, name: true },
-      })
-    : [];
-
-  const directionMap = new Map(directions.map((d) => [d.id, d]));
-
-  // Fetch axis names for axisCounts
-  const axisIds = axisCounts
-    .map((a) => a.primaryAxisId)
-    .filter((id): id is string => id !== null);
-
-  const axes = axisIds.length > 0
-    ? await db.strategicAxis.findMany({
-        where: { id: { in: axisIds } },
-        select: { id: true, code: true, name: true },
-      })
-    : [];
-
-  const axisMap = new Map(axes.map((a) => [a.id, a]));
-
-  // Fetch domain names for domainCounts
-  const domainIds = domainCounts
-    .map((d) => d.acbfDomainId)
-    .filter((id): id is string => id !== null);
-
-  const domains = domainIds.length > 0
-    ? await db.acbfDomain.findMany({
-        where: { id: { in: domainIds } },
-        select: { id: true, code: true, name: true },
-      })
-    : [];
-
-  const domainMap = new Map(domains.map((d) => [d.id, d]));
-
-  // Build response
-  const byStatus: Record<string, number> = {};
-  const allStatuses = [
-    "Non démarré",
-    "En cours",
-    "Réalisé",
-    "En retard",
-    "Suspendu",
-    "À reprogrammer",
-    "Terminé",
-    "Annulé",
-  ];
-  allStatuses.forEach((s) => (byStatus[s] = 0));
-  statusCounts.forEach((s) => {
-    byStatus[s.status] = s._count.status;
-  });
-
-  const byPriority: Record<string, number> = {};
-  const allPriorities = ["Haute", "Moyenne", "Basse"];
-  allPriorities.forEach((p) => (byPriority[p] = 0));
-  priorityCounts.forEach((p) => {
-    byPriority[p.priority] = byPriority[p.priority] ?? 0;
-    byPriority[p.priority] += p._count.priority;
-  });
-
-  const byValidationStatus: Record<string, number> = {};
-  const allValidations = ["Brouillon", "Soumis", "Validé", "Rejeté"];
-  allValidations.forEach((v) => (byValidationStatus[v] = 0));
-  validationCounts.forEach((v) => {
-    byValidationStatus[v.validationStatus] = byValidationStatus[v.validationStatus] ?? 0;
-    byValidationStatus[v.validationStatus] += v._count.validationStatus;
-  });
-
-  const byDirection = directionCounts.map((d) => {
-    const dirInfo = directionMap.get(d.directionId as string);
-    return {
-      directionId: d.directionId,
-      directionCode: dirInfo?.code ?? null,
-      directionName: dirInfo?.name ?? "Sans direction",
-      count: d._count.directionId,
-      avgProgress: Math.round((d._avg.progressRate ?? 0) * 100) / 100,
-    };
-  });
-
-  const byAxis = axisCounts.map((a) => {
-    const axisInfo = axisMap.get(a.primaryAxisId as string);
-    return {
-      axisId: a.primaryAxisId,
-      axisCode: axisInfo?.code ?? null,
-      axisName: axisInfo?.name ?? "Sans axe",
-      count: a._count.primaryAxisId,
-      avgProgress: Math.round((a._avg.progressRate ?? 0) * 100) / 100,
-    };
-  });
-
-  const byDomain = domainCounts.map((d) => {
-    const domainInfo = domainMap.get(d.acbfDomainId as string);
-    return {
-      domainId: d.acbfDomainId,
-      domainCode: domainInfo?.code ?? null,
-      domainName: domainInfo?.name ?? "Sans domaine",
-      count: d._count.acbfDomainId,
-      avgProgress: Math.round((d._avg.progressRate ?? 0) * 100) / 100,
-    };
-  });
-
-  // Average progress per direction (for response)
-  const avgProgressPerDirection = byDirection.map((d) => ({
-    directionId: d.directionId,
-    directionName: d.directionName,
-    avgProgress: d.avgProgress,
-  }));
-
-  // Average progress per axis (for response)
-  const avgProgressPerAxis = byAxis.map((a) => ({
-    axisId: a.axisId,
-    axisName: a.axisName,
-    avgProgress: a.avgProgress,
-  }));
-
-  return NextResponse.json({
-    data: {
-      totalActivities: totalCount,
-      byStatus,
-      byPriority,
-      byValidationStatus,
-      byDirection,
-      byAxis,
-      byDomain,
-      avgProgressOverall: Math.round((avgProgress._avg.progressRate ?? 0) * 100) / 100,
-      avgProgressPerDirection,
-      avgProgressPerAxis,
-      overdueCount,
-      startingThisMonthCount,
-      highRiskCount,
-    },
-  });
-}
-
-// ============================================================
 // GROUPED endpoint — when groupBy is specified
 // ============================================================
-async function handleGrouped(params: z.infer<typeof filterSchema>) {
+
+interface GroupedResult {
+  groupKey: string;
+  groupLabel: string;
+  count: number;
+  avgProgress: number;
+  [key: string]: unknown;
+}
+
+async function handleGrouped(params: z.infer<typeof ptaConsolideFilterSchema>): Promise<GroupedResult[]> {
   const where = buildFilterWhere(params);
   const groupBy = params.groupBy!;
 
@@ -374,25 +115,15 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
 
   const fieldName = groupByFieldMap[groupBy];
 
-  // For null values in FK fields, we need special handling
-  const whereForGroup = { ...where };
-
-  // For FK fields, include null groups too
-  if (["directionId", "primaryAxisId", "acbfDomainId"].includes(fieldName)) {
-    // Don't filter out null values — include them in grouping
-  }
-
   // Use type assertion to satisfy Prisma's groupBy type requirements
   const grouped = await db.activity.groupBy({
     by: [fieldName] as unknown as ["directionId"],
-    where: whereForGroup,
+    where,
     _count: true,
     _avg: { progressRate: true },
   });
 
-  // Enrich with names
-  let enrichedGroups: Array<Record<string, unknown>> = [];
-
+  // Enrich with names based on groupBy type
   if (groupBy === "direction") {
     const ids = grouped
       .map((g) => (g as Record<string, unknown>).directionId as string | null)
@@ -404,9 +135,11 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         })
       : [];
     const entityMap = new Map(entities.map((e) => [e.id, e]));
-    enrichedGroups = grouped.map((g) => {
+    return grouped.map((g) => {
       const dirInfo = entityMap.get((g as Record<string, unknown>).directionId as string);
       return {
+        groupKey: "direction",
+        groupLabel: dirInfo?.name ?? "Sans direction",
         directionId: (g as Record<string, unknown>).directionId,
         directionCode: dirInfo?.code ?? null,
         directionName: dirInfo?.name ?? "Sans direction",
@@ -414,7 +147,9 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
       };
     });
-  } else if (groupBy === "axis") {
+  }
+
+  if (groupBy === "axis") {
     const ids = grouped
       .map((g) => (g as Record<string, unknown>).primaryAxisId as string | null)
       .filter((id): id is string => id !== null);
@@ -425,9 +160,11 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         })
       : [];
     const entityMap = new Map(entities.map((e) => [e.id, e]));
-    enrichedGroups = grouped.map((g) => {
+    return grouped.map((g) => {
       const axisInfo = entityMap.get((g as Record<string, unknown>).primaryAxisId as string);
       return {
+        groupKey: "axis",
+        groupLabel: axisInfo?.name ?? "Sans axe",
         axisId: (g as Record<string, unknown>).primaryAxisId,
         axisCode: axisInfo?.code ?? null,
         axisName: axisInfo?.name ?? "Sans axe",
@@ -435,7 +172,9 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
       };
     });
-  } else if (groupBy === "domain") {
+  }
+
+  if (groupBy === "domain") {
     const ids = grouped
       .map((g) => (g as Record<string, unknown>).acbfDomainId as string | null)
       .filter((id): id is string => id !== null);
@@ -446,9 +185,11 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         })
       : [];
     const entityMap = new Map(entities.map((e) => [e.id, e]));
-    enrichedGroups = grouped.map((g) => {
+    return grouped.map((g) => {
       const domainInfo = entityMap.get((g as Record<string, unknown>).acbfDomainId as string);
       return {
+        groupKey: "domain",
+        groupLabel: domainInfo?.name ?? "Sans domaine",
         domainId: (g as Record<string, unknown>).acbfDomainId,
         domainCode: domainInfo?.code ?? null,
         domainName: domainInfo?.name ?? "Sans domaine",
@@ -456,9 +197,11 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
       };
     });
-  } else if (groupBy === "responsible") {
+  }
+
+  if (groupBy === "responsible") {
     const ids = grouped
-      .map((g) => (g as Record<string, unknown>).responsibleId as string)
+      .map((g) => (g as Record<string, unknown>).responsibleId as string | null)
       .filter((id): id is string => id !== null);
     const entities = ids.length > 0
       ? await db.user.findMany({
@@ -467,9 +210,11 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         })
       : [];
     const entityMap = new Map(entities.map((e) => [e.id, e]));
-    enrichedGroups = grouped.map((g) => {
+    return grouped.map((g) => {
       const userInfo = entityMap.get((g as Record<string, unknown>).responsibleId as string);
       return {
+        groupKey: "responsible",
+        groupLabel: userInfo?.name ?? "Inconnu",
         responsibleId: (g as Record<string, unknown>).responsibleId,
         responsibleName: userInfo?.name ?? "Inconnu",
         responsibleEmail: userInfo?.email ?? null,
@@ -478,31 +223,32 @@ async function handleGrouped(params: z.infer<typeof filterSchema>) {
         avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
       };
     });
-  } else if (groupBy === "priority") {
-    enrichedGroups = grouped.map((g) => ({
+  }
+
+  if (groupBy === "priority") {
+    return grouped.map((g) => ({
+      groupKey: "priority",
+      groupLabel: String((g as Record<string, unknown>).priority),
       priority: (g as Record<string, unknown>).priority,
-      count: g._count,
-      avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
-    }));
-  } else if (groupBy === "status") {
-    enrichedGroups = grouped.map((g) => ({
-      status: (g as Record<string, unknown>).status,
       count: g._count,
       avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
     }));
   }
 
-  return NextResponse.json({
-    data: enrichedGroups,
-    groupBy,
-    total: grouped.reduce((sum, g) => sum + g._count, 0),
-  });
+  // status
+  return grouped.map((g) => ({
+    groupKey: "status",
+    groupLabel: String((g as Record<string, unknown>).status),
+    status: (g as Record<string, unknown>).status,
+    count: g._count,
+    avgProgress: Math.round((g._avg.progressRate ?? 0) * 100) / 100,
+  }));
 }
 
 // ============================================================
 // LIST endpoint — consolidated activities with filters
 // ============================================================
-async function handleList(params: z.infer<typeof filterSchema>) {
+async function handleList(params: z.infer<typeof ptaConsolideFilterSchema>) {
   const where = buildFilterWhere(params);
   const skip = (params.page - 1) * params.limit;
 
@@ -544,15 +290,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const mode = searchParams.get("mode");
 
-    // Stats mode
-    if (mode === "stats") {
-      return await handleStats();
-    }
-
-    // Parse and validate filters
-    const parseResult = filterSchema.safeParse({
+    // Parse and validate filters using centralized schema
+    const parseResult = ptaConsolideFilterSchema.safeParse({
       search: searchParams.get("search") || undefined,
       directionId: searchParams.get("directionId") || undefined,
       primaryAxisId: searchParams.get("primaryAxisId") || undefined,
@@ -578,7 +318,12 @@ export async function GET(request: NextRequest) {
 
     // Grouped mode
     if (params.groupBy) {
-      return await handleGrouped(params);
+      const enrichedGroups = await handleGrouped(params);
+      return NextResponse.json({
+        data: enrichedGroups,
+        groupBy: params.groupBy,
+        total: enrichedGroups.reduce((sum, g) => sum + g.count, 0),
+      });
     }
 
     // List mode (default)

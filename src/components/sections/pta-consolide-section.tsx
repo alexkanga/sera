@@ -29,7 +29,6 @@ import { fr } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Card,
@@ -73,6 +72,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { checkPermission } from "@/lib/client-permissions";
+import { PaginationControls } from "@/components/shared/org-shared";
+import {
+  PriorityBadge,
+  ActivityStatusBadge,
+  ValidationStatusBadge,
+  getProgressColor,
+  getProgressBg,
+} from "@/components/shared/activity-badges";
 
 // ============================================================
 // Types
@@ -188,9 +195,6 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 ];
 
 // ============================================================
-// Permission Helpers
-// ============================================================
-// ============================================================
 // Format Helpers
 // ============================================================
 
@@ -201,122 +205,6 @@ function formatDate(dateStr: string | null): string {
   } catch {
     return dateStr;
   }
-}
-
-function getPriorityBadge(priority: string | null) {
-  if (!priority) return null;
-  switch (priority) {
-    case "Haute":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Haute
-        </Badge>
-      );
-    case "Moyenne":
-      return (
-        <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-          Moyenne
-        </Badge>
-      );
-    case "Basse":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Basse
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {priority}
-        </Badge>
-      );
-  }
-}
-
-function getActivityStatusBadge(status: string | null) {
-  if (!status) return null;
-  switch (status) {
-    case "Non démarré":
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-          Non démarré
-        </Badge>
-      );
-    case "En cours":
-      return (
-        <Badge className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400 border-0">
-          En cours
-        </Badge>
-      );
-    case "Terminé":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Terminé
-        </Badge>
-      );
-    case "Annulé":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Annulé
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {status}
-        </Badge>
-      );
-  }
-}
-
-function getValidationStatusBadge(validationStatus: string | null) {
-  if (!validationStatus) return null;
-  switch (validationStatus) {
-    case "Brouillon":
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-          Brouillon
-        </Badge>
-      );
-    case "Soumis":
-      return (
-        <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-          Soumis
-        </Badge>
-      );
-    case "Validé":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Validé
-        </Badge>
-      );
-    case "Rejeté":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Rejeté
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {validationStatus}
-        </Badge>
-      );
-  }
-}
-
-function getProgressColor(rate: number): string {
-  if (rate >= 75) return "text-emerald-600 dark:text-emerald-400";
-  if (rate >= 50) return "text-blue-600 dark:text-blue-400";
-  if (rate >= 25) return "text-amber-600 dark:text-amber-400";
-  return "text-slate-500 dark:text-slate-400";
-}
-
-function getProgressBg(rate: number): string {
-  if (rate >= 75) return "bg-emerald-500";
-  if (rate >= 50) return "bg-blue-500";
-  if (rate >= 25) return "bg-amber-500";
-  return "bg-slate-400";
 }
 
 // ============================================================
@@ -470,6 +358,28 @@ export function PtaConsolideSection() {
   }, []);
 
   // ============================================================
+  // M4: Clean orphan filters when selected option no longer exists
+  // ============================================================
+
+  useEffect(() => {
+    if (directionFilter && directionOptions.length > 0 && !directionOptions.some((d) => d.id === directionFilter)) {
+      setDirectionFilter("");
+    }
+  }, [directionFilter, directionOptions]);
+
+  useEffect(() => {
+    if (axisFilter && axisOptions.length > 0 && !axisOptions.some((a) => a.id === axisFilter)) {
+      setAxisFilter("");
+    }
+  }, [axisFilter, axisOptions]);
+
+  useEffect(() => {
+    if (domainFilter && domainOptions.length > 0 && !domainOptions.some((d) => d.id === domainFilter)) {
+      setDomainFilter("");
+    }
+  }, [domainFilter, domainOptions]);
+
+  // ============================================================
   // Reset page when filters change
   // ============================================================
 
@@ -504,11 +414,12 @@ export function PtaConsolideSection() {
           valA = a.direction?.name?.toLowerCase() || "";
           valB = b.direction?.name?.toLowerCase() || "";
           break;
-        case "priority":
+        case "priority": {
           const pOrder: Record<string, number> = { Haute: 3, Moyenne: 2, Basse: 1 };
           valA = pOrder[a.priority] || 0;
           valB = pOrder[b.priority] || 0;
           break;
+        }
         case "status":
           valA = a.status;
           valB = b.status;
@@ -551,7 +462,7 @@ export function PtaConsolideSection() {
 
     const groups = new Map<string, Activity[]>();
 
-    sortedActivities.forEach((activity) => {
+    for (const activity of sortedActivities) {
       let key = "Non assigné";
       switch (groupBy) {
         case "direction":
@@ -578,7 +489,7 @@ export function PtaConsolideSection() {
         groups.set(key, []);
       }
       groups.get(key)!.push(activity);
-    });
+    }
 
     return Array.from(groups.entries()).map(([key, acts]) => ({
       key,
@@ -653,7 +564,8 @@ export function PtaConsolideSection() {
 
       const res = await fetch(`/api/pta-consolide/export?${params.toString()}`);
       if (!res.ok) {
-        throw new Error("Erreur lors de l'export");
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Erreur lors de l'export");
       }
 
       const blob = await res.blob();
@@ -1090,7 +1002,7 @@ export function PtaConsolideSection() {
 
             {/* Row 2: Dropdowns */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v === "__all__" ? "" : v)}>
+              <Select value={directionFilter || "__all__"} onValueChange={(v) => setDirectionFilter(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Toutes les directions" />
                 </SelectTrigger>
@@ -1104,7 +1016,7 @@ export function PtaConsolideSection() {
                 </SelectContent>
               </Select>
 
-              <Select value={axisFilter} onValueChange={(v) => setAxisFilter(v === "__all__" ? "" : v)}>
+              <Select value={axisFilter || "__all__"} onValueChange={(v) => setAxisFilter(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Tous les axes" />
                 </SelectTrigger>
@@ -1118,7 +1030,7 @@ export function PtaConsolideSection() {
                 </SelectContent>
               </Select>
 
-              <Select value={domainFilter} onValueChange={(v) => setDomainFilter(v === "__all__" ? "" : v)}>
+              <Select value={domainFilter || "__all__"} onValueChange={(v) => setDomainFilter(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Tous les domaines" />
                 </SelectTrigger>
@@ -1132,7 +1044,7 @@ export function PtaConsolideSection() {
                 </SelectContent>
               </Select>
 
-              <Select value={activityStatusFilter} onValueChange={(v) => setActivityStatusFilter(v === "__all__" ? "" : v)}>
+              <Select value={activityStatusFilter || "__all__"} onValueChange={(v) => setActivityStatusFilter(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Tous les statuts" />
                 </SelectTrigger>
@@ -1255,9 +1167,12 @@ export function PtaConsolideSection() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {getPriorityBadge(
-                              group.activities.some((a) => a.priority === "Haute") ? "Haute" : group.activities.some((a) => a.priority === "Moyenne") ? "Moyenne" : "Basse"
-                            )}
+                            <PriorityBadge
+                              priority={
+                                group.activities.some((a) => a.priority === "Haute") ? "Haute" :
+                                group.activities.some((a) => a.priority === "Moyenne") ? "Moyenne" : "Basse"
+                              }
+                            />
                           </div>
                         </div>
                       </CardContent>
@@ -1298,8 +1213,8 @@ export function PtaConsolideSection() {
                                 <TableCell className="text-xs text-muted-foreground truncate">
                                   {activity.responsible?.name || "—"}
                                 </TableCell>
-                                <TableCell>{getPriorityBadge(activity.priority)}</TableCell>
-                                <TableCell>{getActivityStatusBadge(activity.status)}</TableCell>
+                                <TableCell><PriorityBadge priority={activity.priority} /></TableCell>
+                                <TableCell><ActivityStatusBadge status={activity.status} /></TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-1.5">
                                     <Progress value={activity.progressRate} className={`h-1.5 w-12 ${getProgressBg(activity.progressRate)}`} />
@@ -1308,7 +1223,7 @@ export function PtaConsolideSection() {
                                     </span>
                                   </div>
                                 </TableCell>
-                                <TableCell>{getValidationStatusBadge(activity.validationStatus)}</TableCell>
+                                <TableCell><ValidationStatusBadge validationStatus={activity.validationStatus} /></TableCell>
                                 <TableCell>
                                   <Button
                                     variant="ghost"
@@ -1466,8 +1381,8 @@ export function PtaConsolideSection() {
                               </Tooltip>
                             ) : "—"}
                           </TableCell>
-                          <TableCell>{getPriorityBadge(activity.priority)}</TableCell>
-                          <TableCell>{getActivityStatusBadge(activity.status)}</TableCell>
+                          <TableCell><PriorityBadge priority={activity.priority} /></TableCell>
+                          <TableCell><ActivityStatusBadge status={activity.status} /></TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <Progress value={activity.progressRate} className="h-1.5 w-14" />
@@ -1476,7 +1391,7 @@ export function PtaConsolideSection() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell>{getValidationStatusBadge(activity.validationStatus)}</TableCell>
+                          <TableCell><ValidationStatusBadge validationStatus={activity.validationStatus} /></TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
@@ -1510,8 +1425,8 @@ export function PtaConsolideSection() {
                             <span className="font-mono text-xs text-emerald-700 dark:text-emerald-400">
                               {activity.activityCode}
                             </span>
-                            {getPriorityBadge(activity.priority)}
-                            {getValidationStatusBadge(activity.validationStatus)}
+                            <PriorityBadge priority={activity.priority} />
+                            <ValidationStatusBadge validationStatus={activity.validationStatus} />
                           </div>
                           <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
                             {activity.title}
@@ -1521,7 +1436,7 @@ export function PtaConsolideSection() {
                             {activity.direction && <span>{activity.direction.code}</span>}
                           </div>
                           <div className="flex items-center gap-2 mt-1.5">
-                            {getActivityStatusBadge(activity.status)}
+                            <ActivityStatusBadge status={activity.status} />
                             <div className="flex items-center gap-1.5 flex-1">
                               <Progress value={activity.progressRate} className="h-1.5 flex-1" />
                               <span className={`text-[10px] font-medium ${getProgressColor(activity.progressRate)}`}>
@@ -1538,85 +1453,17 @@ export function PtaConsolideSection() {
               </>
             )}
           </CardContent>
+          {/* M1: Use shared PaginationControls */}
+          {totalPages > 1 && (
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={setPage}
+            />
+          )}
         </Card>
-      )}
-
-      {/* ============================================================ */}
-      {/* Pagination */}
-      {/* ============================================================ */}
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} sur {totalPages}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(1)}
-              className="h-8 w-8 p-0"
-            >
-              <span className="text-xs">1</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-8 px-2"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            {/* Page numbers */}
-            {(() => {
-              const pages: number[] = [];
-              const start = Math.max(2, page - 2);
-              const end = Math.min(totalPages - 1, page + 2);
-
-              for (let i = start; i <= end; i++) {
-                pages.push(i);
-              }
-
-              return pages.map((p) => (
-                <Button
-                  key={p}
-                  variant={p === page ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setPage(p)}
-                  className={`h-8 w-8 p-0 ${
-                    p === page
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : ""
-                  }`}
-                >
-                  <span className="text-xs">{p}</span>
-                </Button>
-              ));
-            })()}
-
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="h-8 px-2"
-            >
-              <ChevronUp className="h-4 w-4 rotate-90" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(totalPages)}
-              className="h-8 w-8 p-0"
-            >
-              <span className="text-xs">{totalPages}</span>
-            </Button>
-          </div>
-        </div>
       )}
 
       {/* ============================================================ */}
@@ -1770,15 +1617,15 @@ export function PtaConsolideSection() {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Priorité</p>
-                        <div className="mt-0.5">{getPriorityBadge(selectedActivity.priority)}</div>
+                        <div className="mt-0.5"><PriorityBadge priority={selectedActivity.priority} /></div>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Statut</p>
-                        <div className="mt-0.5">{getActivityStatusBadge(selectedActivity.status)}</div>
+                        <div className="mt-0.5"><ActivityStatusBadge status={selectedActivity.status} /></div>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Validation</p>
-                        <div className="mt-0.5">{getValidationStatusBadge(selectedActivity.validationStatus)}</div>
+                        <div className="mt-0.5"><ValidationStatusBadge validationStatus={selectedActivity.validationStatus} /></div>
                       </div>
                     </div>
                     <div>

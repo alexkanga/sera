@@ -38,12 +38,12 @@ export async function GET() {
         _avg: { progressRate: true },
       }),
 
-      // Activities en retard (endDate < now AND status != Terminé AND status != Annulé)
+      // Activities en retard (endDate < now AND status not in terminal states)
       db.activity.count({
         where: {
           ...baseWhere,
           endDate: { lt: new Date() },
-          status: { notIn: ["Terminé", "Annulé"] },
+          status: { notIn: ["Réalisé", "Terminé", "Annulé"] },
         },
       }),
 

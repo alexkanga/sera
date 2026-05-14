@@ -1,16 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { z } from "zod";
+import { ptaConsolideExportSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/request-context";
 
 // ============================================================
 // GET /api/pta-consolide/export — Export consolidated data
-// Query params: format=csv|json
+// Query params: format=csv|json + same filters as main route
 // ============================================================
 
-const exportQuerySchema = z.object({
-  format: z.enum(["csv", "json"]).default("json"),
-});
+// C1: Simple in-memory rate limiter (1 export per minute per user)
+const exportTimestamps = new Map<string, number>();
+const RATE_LIMIT_MS = 60_000; // 1 minute
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const lastExport = exportTimestamps.get(userId);
+  if (lastExport && now - lastExport < RATE_LIMIT_MS) {
+    return false; // Rate limited
+  }
+  exportTimestamps.set(userId, now);
+  // Clean up old entries every 100 exports
+  if (exportTimestamps.size > 100) {
+    for (const [key, timestamp] of exportTimestamps) {
+      if (now - timestamp > RATE_LIMIT_MS * 2) {
+        exportTimestamps.delete(key);
+      }
+    }
+  }
+  return true;
+}
 
 // Flatten activity with relations for export
 interface ActivityExportRow {
@@ -168,6 +187,55 @@ function generateCSV(rows: ActivityExportRow[]): string {
   return [headerLine, ...dataLines].join("\n");
 }
 
+// Build filter where clause from export params (E4: apply filters)
+function buildExportFilterWhere(params: z.infer<typeof ptaConsolideExportSchema>): Record<string, unknown> {
+  const where: Record<string, unknown> = {
+    deletedAt: null,
+    isActive: true,
+  };
+
+  if (params.search) {
+    where.OR = [
+      { title: { contains: params.search, mode: "insensitive" } },
+      { activityCode: { contains: params.search, mode: "insensitive" } },
+    ];
+  }
+
+  if (params.directionId) {
+    where.directionId = params.directionId;
+  }
+
+  if (params.primaryAxisId) {
+    where.primaryAxisId = params.primaryAxisId;
+  }
+
+  if (params.secondaryAxisId) {
+    where.secondaryAxisId = params.secondaryAxisId;
+  }
+
+  if (params.acbfDomainId) {
+    where.acbfDomainId = params.acbfDomainId;
+  }
+
+  if (params.priority) {
+    where.priority = params.priority;
+  }
+
+  if (params.validationStatus) {
+    where.validationStatus = params.validationStatus;
+  }
+
+  if (params.activityStatus) {
+    where.status = params.activityStatus;
+  }
+
+  if (params.responsibleId) {
+    where.responsibleId = params.responsibleId;
+  }
+
+  return where;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const currentUser = await getCurrentUser();
@@ -180,10 +248,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    // C1: Rate limiting check
+    if (!checkRateLimit(currentUser.id)) {
+      return NextResponse.json(
+        { error: "Export limité à une requête par minute. Veuillez réessayer plus tard." },
+        { status: 429 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
 
-    const parseResult = exportQuerySchema.safeParse({
+    // C3: Use centralized validation schema with filter support
+    const parseResult = ptaConsolideExportSchema.safeParse({
       format: searchParams.get("format") || "json",
+      search: searchParams.get("search") || undefined,
+      directionId: searchParams.get("directionId") || undefined,
+      primaryAxisId: searchParams.get("primaryAxisId") || undefined,
+      secondaryAxisId: searchParams.get("secondaryAxisId") || undefined,
+      acbfDomainId: searchParams.get("acbfDomainId") || undefined,
+      priority: searchParams.get("priority") || undefined,
+      validationStatus: searchParams.get("validationStatus") || undefined,
+      activityStatus: searchParams.get("activityStatus") || undefined,
+      responsibleId: searchParams.get("responsibleId") || undefined,
     });
 
     if (!parseResult.success) {
@@ -193,14 +279,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { format } = parseResult.data;
+    const params = parseResult.data;
+    const { format } = params;
 
-    // Fetch all active (non-archived) activities with all relations
+    // E4: Apply filters from params (not just all active activities)
+    const where = buildExportFilterWhere(params);
+
+    // Fetch filtered activities with all relations
     const activities = await db.activity.findMany({
-      where: {
-        deletedAt: null,
-        isActive: true,
-      },
+      where,
       include: {
         responsible: {
           select: { id: true, name: true, email: true, ptaCode: true },
@@ -238,7 +325,8 @@ export async function GET(request: NextRequest) {
       flattenActivity(a as unknown as Record<string, unknown>)
     );
 
-    // Audit log for export action
+    // C2: Audit log with IP and User-Agent
+    const { ip, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -247,8 +335,17 @@ export async function GET(request: NextRequest) {
         newValue: JSON.stringify({
           format,
           count: flatRows.length,
+          filters: {
+            search: params.search || null,
+            directionId: params.directionId || null,
+            priority: params.priority || null,
+            validationStatus: params.validationStatus || null,
+            activityStatus: params.activityStatus || null,
+          },
         }),
         details: `Export PTA consolidé au format ${format.toUpperCase()} (${flatRows.length} activités)`,
+        ip,
+        userAgent,
       },
     });
 

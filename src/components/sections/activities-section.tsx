@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { activityFormSchema, type ActivityFormValues } from "@/lib/validations";
 import { PaginationControls } from "@/components/shared/org-shared";
+import { PriorityBadge, ActivityStatusBadge, ValidationStatusBadge } from "@/components/shared/activity-badges";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
@@ -211,107 +212,7 @@ function formatDateFull(dateStr: string | null): string {
   }
 }
 
-function getPriorityBadge(priority: string | null) {
-  if (!priority) return null;
-  switch (priority) {
-    case "Haute":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Haute
-        </Badge>
-      );
-    case "Moyenne":
-      return (
-        <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-          Moyenne
-        </Badge>
-      );
-    case "Basse":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Basse
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {priority}
-        </Badge>
-      );
-  }
-}
-
-function getActivityStatusBadge(status: string | null) {
-  if (!status) return null;
-  switch (status) {
-    case "Non démarré":
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-          Non démarré
-        </Badge>
-      );
-    case "En cours":
-      return (
-        <Badge className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400 border-0">
-          En cours
-        </Badge>
-      );
-    case "Terminé":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Terminé
-        </Badge>
-      );
-    case "Annulé":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Annulé
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {status}
-        </Badge>
-      );
-  }
-}
-
-function getValidationStatusBadge(validationStatus: string | null) {
-  if (!validationStatus) return null;
-  switch (validationStatus) {
-    case "Brouillon":
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-          Brouillon
-        </Badge>
-      );
-    case "Soumis":
-      return (
-        <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-          Soumis
-        </Badge>
-      );
-    case "Validé":
-      return (
-        <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-          Validé
-        </Badge>
-      );
-    case "Rejeté":
-      return (
-        <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400 border-0">
-          Rejeté
-        </Badge>
-      );
-    default:
-      return (
-        <Badge className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-0">
-          {validationStatus}
-        </Badge>
-      );
-  }
-}
+// Badge components imported from @/components/shared/activity-badges
 
 // ============================================================
 // Main Component
@@ -1408,7 +1309,7 @@ export function ActivitiesSection() {
               </div>
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Priorité</p>
-                <div className="mt-0.5">{getPriorityBadge(selectedActivity.priority)}</div>
+                <div className="mt-0.5"><PriorityBadge priority={selectedActivity.priority} /></div>
               </div>
             </div>
           </div>
@@ -1437,7 +1338,7 @@ export function ActivitiesSection() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Statut d&apos;activité</p>
-                  <div className="mt-0.5">{getActivityStatusBadge(selectedActivity.status)}</div>
+                  <div className="mt-0.5"><ActivityStatusBadge status={selectedActivity.status} /></div>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Validateur</p>
@@ -1450,7 +1351,7 @@ export function ActivitiesSection() {
               </div>
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Statut de validation</p>
-                <div className="mt-0.5">{getValidationStatusBadge(selectedActivity.validationStatus)}</div>
+                <div className="mt-0.5"><ValidationStatusBadge validationStatus={selectedActivity.validationStatus} /></div>
               </div>
             </div>
           </div>
@@ -1897,16 +1798,12 @@ export function ActivitiesSection() {
 
                         {/* Priority */}
                         <TableCell className="hidden md:table-cell">
-                          {getPriorityBadge(activity.priority) ?? (
-                            <span className="text-sm text-slate-400">—</span>
-                          )}
+                          <PriorityBadge priority={activity.priority} /> || <span className="text-sm text-slate-400">—</span>
                         </TableCell>
 
                         {/* Status */}
                         <TableCell className="hidden md:table-cell">
-                          {getActivityStatusBadge(activity.status) ?? (
-                            <span className="text-sm text-slate-400">—</span>
-                          )}
+                          <ActivityStatusBadge status={activity.status} /> || <span className="text-sm text-slate-400">—</span>
                         </TableCell>
 
                         {/* Progress */}
@@ -1919,9 +1816,7 @@ export function ActivitiesSection() {
 
                         {/* Validation Status */}
                         <TableCell className="hidden lg:table-cell">
-                          {getValidationStatusBadge(activity.validationStatus) ?? (
-                            <span className="text-sm text-slate-400">—</span>
-                          )}
+                          <ValidationStatusBadge validationStatus={activity.validationStatus} /> || <span className="text-sm text-slate-400">—</span>
                         </TableCell>
 
                         {/* Actions */}
