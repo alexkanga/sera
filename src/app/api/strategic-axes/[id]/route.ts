@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { updateStrategicAxisSchema, archivePermissionSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const updateStrategicAxisSchema = z.object({
-  code: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  objective: z.string().optional().nullable(),
-  expectedResults: z.string().optional().nullable(),
-  indicators: z.string().optional().nullable(),
-  concernedUnits: z.string().optional().nullable(),
-  order: z.number().int().min(0).optional(),
-});
 
 // GET /api/strategic-axes/[id] — Détail d'un axe stratégique
 export async function GET(
@@ -142,24 +134,38 @@ export async function PUT(
       data: updateData,
     });
 
-    // Journal d'audit
+    // Journal d'audit — oldValue and newValue capture the same fields for consistency
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
+    const oldValue = {
+      code: existingAxis.code,
+      name: existingAxis.name,
+      objective: existingAxis.objective,
+      expectedResults: existingAxis.expectedResults,
+      indicators: existingAxis.indicators,
+      concernedUnits: existingAxis.concernedUnits,
+      order: existingAxis.order,
+    };
+    const newValue = {
+      code: updatedAxis.code,
+      name: updatedAxis.name,
+      objective: updatedAxis.objective,
+      expectedResults: updatedAxis.expectedResults,
+      indicators: updatedAxis.indicators,
+      concernedUnits: updatedAxis.concernedUnits,
+      order: updatedAxis.order,
+    };
+
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
         action: "UPDATE",
         entity: "StrategicAxis",
         entityId: id,
-        oldValue: JSON.stringify({
-          code: existingAxis.code,
-          name: existingAxis.name,
-          objective: existingAxis.objective,
-          expectedResults: existingAxis.expectedResults,
-          indicators: existingAxis.indicators,
-          concernedUnits: existingAxis.concernedUnits,
-          order: existingAxis.order,
-        }),
-        newValue: JSON.stringify(updateData),
+        oldValue: JSON.stringify(oldValue),
+        newValue: JSON.stringify(newValue),
         details: `Mise à jour de l'axe stratégique ${updatedAxis.name}`,
+        ipAddress,
+        userAgent,
       },
     });
 
@@ -216,9 +222,33 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { action } = body as { action: "archive" | "restore" };
+    const { action } = archivePermissionSchema.parse(body);
+
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     if (action === "archive") {
+      // Vérifier les activités liées avant archivage
+      const linkedCount = await db.activity.count({
+        where: {
+          OR: [
+            { primaryAxisId: id },
+            { secondaryAxisId: id },
+          ],
+          isActive: true,
+          deletedAt: null,
+        },
+      });
+
+      if (linkedCount > 0) {
+        return NextResponse.json(
+          {
+            error: `Impossible d'archiver cet axe stratégique : ${linkedCount} activité(s) active(s) y sont liée(s). Veuillez d'abord réaffecter ces activités.`,
+            linkedCount,
+          },
+          { status: 400 }
+        );
+      }
+
       const updatedAxis = await db.strategicAxis.update({
         where: { id },
         data: { deletedAt: new Date(), isActive: false },
@@ -236,11 +266,14 @@ export async function PATCH(
             deletedAt: updatedAxis.deletedAt,
           }),
           details: `Archive de l'axe stratégique ${existingAxis.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, archived: true } });
-    } else if (action === "restore") {
+    } else {
+      // restore
       const updatedAxis = await db.strategicAxis.update({
         where: { id },
         data: { deletedAt: null, isActive: true },
@@ -258,17 +291,20 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration de l'axe stratégique ${existingAxis.name}`,
+          ipAddress,
+          userAgent,
         },
       });
 
       return NextResponse.json({ data: { id, restored: true } });
     }
-
-    return NextResponse.json(
-      { error: "Action invalide. Utilisez 'archive' ou 'restore'" },
-      { status: 400 }
-    );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Données invalides", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Erreur PATCH /api/strategic-axes/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

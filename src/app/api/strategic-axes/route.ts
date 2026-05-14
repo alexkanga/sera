@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { createStrategicAxisSchema } from "@/lib/validations";
+import { getIpAndUserAgent } from "@/lib/audit-utils";
 import { z } from "zod";
-
-const createStrategicAxisSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  objective: z.string().optional().nullable(),
-  expectedResults: z.string().optional().nullable(),
-  indicators: z.string().optional().nullable(),
-  concernedUnits: z.string().optional().nullable(),
-  order: z.number().int().min(0).default(0),
-});
 
 // GET /api/strategic-axes — Liste des axes stratégiques
 export async function GET(request: NextRequest) {
@@ -29,8 +21,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || ""; // "active", "archived", "all"
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawPage = parseInt(searchParams.get("page") || "1");
+    const rawLimit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, isNaN(rawPage) ? 1 : rawPage);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -48,8 +42,8 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { code: { contains: search } },
+        { name: { contains: search, mode: "insensitive" } },
+        { code: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -71,27 +65,8 @@ export async function GET(request: NextRequest) {
       db.strategicAxis.count({ where }),
     ]);
 
-    const formattedAxes = axes.map((axis) => ({
-      id: axis.id,
-      code: axis.code,
-      name: axis.name,
-      objective: axis.objective,
-      expectedResults: axis.expectedResults,
-      indicators: axis.indicators,
-      concernedUnits: axis.concernedUnits,
-      order: axis.order,
-      isActive: axis.isActive,
-      deletedAt: axis.deletedAt,
-      createdAt: axis.createdAt,
-      updatedAt: axis.updatedAt,
-      _count: {
-        activitiesPrimary: axis._count.activitiesPrimary,
-        activitiesSecondary: axis._count.activitiesSecondary,
-      },
-    }));
-
     return NextResponse.json({
-      data: formattedAxes,
+      data: axes,
       pagination: {
         page,
         limit,
@@ -117,6 +92,8 @@ export async function POST(request: NextRequest) {
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
+
+    const { ipAddress, userAgent } = getIpAndUserAgent(request);
 
     const body = await request.json();
     const validated = createStrategicAxisSchema.parse(body);
@@ -155,9 +132,14 @@ export async function POST(request: NextRequest) {
           code: axis.code,
           name: axis.name,
           objective: axis.objective,
+          expectedResults: axis.expectedResults,
+          indicators: axis.indicators,
+          concernedUnits: axis.concernedUnits,
           order: axis.order,
         }),
         details: `Création de l'axe stratégique ${axis.name} (${axis.code})`,
+        ipAddress,
+        userAgent,
       },
     });
 

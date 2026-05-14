@@ -97,26 +97,28 @@ export function PaginationControls({
 interface StatusBadgeProps {
   deletedAt: string | null;
   isActive: boolean;
+  /** French grammatical gender: "m" for masculine (Axe), "f" for feminine (Direction, Unité). Default: "f" */
+  gender?: "m" | "f";
 }
 
-export function StatusBadge({ deletedAt, isActive }: StatusBadgeProps) {
+export function StatusBadge({ deletedAt, isActive, gender = "f" }: StatusBadgeProps) {
   if (deletedAt) {
     return (
       <Badge className="text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-        Archivée
+        {gender === "m" ? "Archivé" : "Archivée"}
       </Badge>
     );
   }
   if (!isActive) {
     return (
       <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-        Inactive
+        {gender === "m" ? "Inactif" : "Inactive"}
       </Badge>
     );
   }
   return (
     <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-      Active
+      {gender === "m" ? "Actif" : "Active"}
     </Badge>
   );
 }

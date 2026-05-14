@@ -14,8 +14,6 @@ import {
   Loader2,
   AlertCircle,
   X,
-  ChevronLeft,
-  ChevronRight,
   Hash,
   Activity,
 } from "lucide-react";
@@ -69,6 +67,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { checkPermission } from "@/lib/client-permissions";
+import { PaginationControls, StatusBadge } from "@/components/shared/org-shared";
 
 // ============================================================
 // Types
@@ -94,7 +93,7 @@ interface StrategicAxis {
 }
 
 // ============================================================
-// Zod Schemas
+// Zod Schemas (aligned with backend validations.ts)
 // ============================================================
 
 const axisFormSchema = z.object({
@@ -122,9 +121,6 @@ type AxisFormValues = z.infer<typeof axisFormSchema>;
 
 const ITEMS_PER_PAGE = 20;
 
-// ============================================================
-// Permission Helpers
-// ============================================================
 // ============================================================
 // Format Helpers
 // ============================================================
@@ -336,17 +332,19 @@ export function StrategicAxesSection() {
     setSelectedAxis(axis);
     setViewDialogOpen(true);
 
-    // Fetch full detail with activity counts
-    try {
-      const res = await fetch(`/api/strategic-axes/${axis.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedAxis((prev) =>
-          prev ? { ...prev, ...data.data } : prev
-        );
+    // Fetch full detail with activity counts (only if not already present)
+    if (axis._count?.activitiesPrimary === undefined) {
+      try {
+        const res = await fetch(`/api/strategic-axes/${axis.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSelectedAxis((prev) =>
+            prev ? { ...prev, ...data.data } : prev
+          );
+        }
+      } catch {
+        // Keep existing data
       }
-    } catch {
-      // Keep existing data
     }
   }
 
@@ -783,21 +781,13 @@ export function StrategicAxesSection() {
                           </div>
                         </TableCell>
 
-                        {/* Status */}
+                        {/* Status — uses shared StatusBadge */}
                         <TableCell>
-                          {axis.deletedAt ? (
-                            <Badge className="text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-                              Archivé
-                            </Badge>
-                          ) : !axis.isActive ? (
-                            <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-                              Inactif
-                            </Badge>
-                          ) : (
-                            <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-                              Actif
-                            </Badge>
-                          )}
+                          <StatusBadge
+                            deletedAt={axis.deletedAt}
+                            isActive={axis.isActive}
+                            gender="m"
+                          />
                         </TableCell>
 
                         {/* Actions */}
@@ -877,70 +867,14 @@ export function StrategicAxesSection() {
                 </Table>
               </div>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {total > 0
-                    ? `Affichage de ${(page - 1) * ITEMS_PER_PAGE + 1} à ${Math.min(page * ITEMS_PER_PAGE, total)} sur ${total}`
-                    : "Aucun résultat"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                    className="h-8"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Précédent
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from(
-                      { length: Math.min(totalPages, 5) },
-                      (_, i) => {
-                        let pageNum: number;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (page <= 3) {
-                          pageNum = i + 1;
-                        } else if (page >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setPage(pageNum)}
-                            className={`h-8 w-8 p-0 ${
-                              page === pageNum
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                : ""
-                            }`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      }
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={page >= totalPages}
-                    className="h-8"
-                  >
-                    Suivant
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
+              {/* Pagination — uses shared PaginationControls */}
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPage}
+              />
             </>
           )}
         </CardContent>
@@ -1328,19 +1262,11 @@ export function StrategicAxesSection() {
 
               {/* Status & Order */}
               <div className="flex items-center gap-3">
-                {selectedAxis.deletedAt ? (
-                  <Badge className="bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border-0">
-                    Archivé
-                  </Badge>
-                ) : !selectedAxis.isActive ? (
-                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-0">
-                    Inactif
-                  </Badge>
-                ) : (
-                  <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 border-0">
-                    Actif
-                  </Badge>
-                )}
+                <StatusBadge
+                  deletedAt={selectedAxis.deletedAt}
+                  isActive={selectedAxis.isActive}
+                  gender="m"
+                />
                 <span className="text-sm text-slate-500 dark:text-slate-400">
                   Ordre : {selectedAxis.order}
                 </span>
@@ -1480,7 +1406,7 @@ export function StrategicAxesSection() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {archiveAction === "archive"
-                ? `Êtes-vous sûr de vouloir archiver l'axe stratégique "${selectedAxis?.name}" ? Il sera marqué comme inactif mais ne sera pas supprimé.`
+                ? `Êtes-vous sûr de vouloir archiver l'axe stratégique "${selectedAxis?.name}" ? Il sera marqué comme inactif mais ne sera pas supprimé. Les activités qui y sont liées ne pourront plus s'y référer.`
                 : `Êtes-vous sûr de vouloir restaurer l'axe stratégique "${selectedAxis?.name}" ? Il sera à nouveau marqué comme actif.`}
             </AlertDialogDescription>
           </AlertDialogHeader>

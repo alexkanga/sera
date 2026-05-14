@@ -143,3 +143,41 @@ export const updateUnitSchema = z.object({
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: "Au moins un champ doit être fourni pour la mise à jour",
 });
+
+// ─── Strategic Axis schemas (Module 3) ────────────────────────────────────
+
+const axisTextField = z
+  .string()
+  .max(2000, "Maximum 2000 caractères")
+  .optional()
+  .nullable();
+
+export const createStrategicAxisSchema = z.object({
+  code: orgCodeField,
+  name: orgNameField,
+  objective: axisTextField,
+  expectedResults: axisTextField,
+  indicators: axisTextField,
+  concernedUnits: z
+    .string()
+    .max(1000, "Maximum 1000 caractères")
+    .optional()
+    .nullable(),
+  order: z.number().int().min(0).default(0),
+});
+
+export const updateStrategicAxisSchema = z.object({
+  code: orgCodeField.optional(),
+  name: orgNameField.optional(),
+  objective: axisTextField,
+  expectedResults: axisTextField,
+  indicators: axisTextField,
+  concernedUnits: z
+    .string()
+    .max(1000, "Maximum 1000 caractères")
+    .optional()
+    .nullable(),
+  order: z.number().int().min(0).optional(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: "Au moins un champ doit être fourni pour la mise à jour",
+});
