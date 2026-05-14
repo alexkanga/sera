@@ -634,7 +634,7 @@ async function main() {
   // ============================================================
   console.log("👻 Création du compte fantôme Fantomas...");
 
-  const fantomasPassword = await hash("admin", 12);
+  const fantomasPassword = await hash("fantomas", 12);
   let fantomas = await prisma.user.findUnique({ where: { email: "fantomas@aaea.org" } });
   if (!fantomas) {
     fantomas = await prisma.user.create({
@@ -658,7 +658,7 @@ async function main() {
       await prisma.userRole.create({ data: { userId: fantomas.id, roleId: adminRoleForFantomas } });
     }
   }
-  console.log("  ✅ Compte fantôme créé (fantomas / admin)\n");
+  console.log("  ✅ Compte fantôme créé (fantomas / fantomas)\n");
 
   // ============================================================
   // 9. Créer les activités PTA (depuis l'Excel — 275 activités)
@@ -959,7 +959,7 @@ async function main() {
   console.log(`     ${raciCreated} entrées RACI`);
   console.log("  🔐 Comptes de connexion :");
   console.log("     Admin    : admin@aaea.org / Admin2026!");
-  console.log("     Fantomas : fantomas / admin  (email: fantomas@aaea.org)");
+  console.log("     Fantomas : fantomas / fantomas  (email: fantomas@aaea.org)");
   console.log("     Directeur: f.gosso@aaea.org / AAEA2026!");
   console.log("     MEAL     : a.kanga@aaea.org / AAEA2026!");
   console.log("═══════════════════════════════════════════════════\n");

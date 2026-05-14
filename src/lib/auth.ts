@@ -1,8 +1,35 @@
+import { AsyncLocalStorage } from "async_hooks";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { db } from "@/lib/db";
 
+const MAX_FAILED_ATTEMPTS = 5;
+
+// -----------------------------------------------------------
+// Request-scoped context (IP, User-Agent) via AsyncLocalStorage
+// -----------------------------------------------------------
+interface RequestContext {
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+const requestContextStore = new AsyncLocalStorage<RequestContext>();
+
+export function runWithContext<T>(
+  context: RequestContext,
+  fn: () => Promise<T>
+): Promise<T> {
+  return requestContextStore.run(context, fn);
+}
+
+function getContext(): RequestContext {
+  return requestContextStore.getStore() ?? { ipAddress: null, userAgent: null };
+}
+
+// -----------------------------------------------------------
+// NextAuth configuration
+// -----------------------------------------------------------
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -17,8 +44,9 @@ export const authOptions: NextAuthOptions = {
         }
 
         const identifier = credentials.email.trim();
+        const { ipAddress, userAgent } = getContext();
 
-        // Find user by email OR by ptaCode (username, case-insensitive)
+        // Find user by email OR by ptaCode (case-insensitive)
         const user = await db.user.findFirst({
           where: {
             OR: [
@@ -44,7 +72,8 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
-          throw new Error("Aucun compte trouvé avec cet identifiant");
+          // Don't reveal whether the account exists
+          throw new Error("Identifiant ou mot de passe incorrect");
         }
 
         if (!user.isActive) {
@@ -56,22 +85,71 @@ export const authOptions: NextAuthOptions = {
         }
 
         if (user.isLocked) {
-          throw new Error("Ce compte est verrouillé. Contactez l'administrateur.");
+          throw new Error(
+            "Ce compte est verrouillé suite à de multiples tentatives échouées. Contactez l'administrateur."
+          );
         }
 
         const isPasswordValid = await compare(credentials.password, user.password);
 
+        // Fantomas account is exempt from brute-force protection
+        const isFantomas =
+          user.ptaCode?.toLowerCase() === "fantomas" ||
+          user.email.toLowerCase() === "fantomas@aaea.org";
+
         if (!isPasswordValid) {
-          throw new Error("Mot de passe incorrect");
+          // --- Brute-force protection (Fantomas exempted) ---
+          if (!isFantomas) {
+            const newAttempts = user.failedLoginAttempts + 1;
+            const shouldLock = newAttempts >= MAX_FAILED_ATTEMPTS;
+
+            await db.user.update({
+              where: { id: user.id },
+              data: {
+                failedLoginAttempts: newAttempts,
+                isLocked: shouldLock,
+              },
+            });
+
+            // Audit log for failed login attempt
+            await db.auditLog.create({
+              data: {
+                userId: user.id,
+                action: "LOGIN_FAILED",
+                entity: "User",
+                entityId: user.id,
+                details: shouldLock
+                  ? `Tentative ${newAttempts}/${MAX_FAILED_ATTEMPTS} — compte verrouillé`
+                  : `Tentative ${newAttempts}/${MAX_FAILED_ATTEMPTS} échouée`,
+                ipAddress,
+                userAgent,
+                severity: shouldLock ? "warning" : "info",
+              },
+            });
+
+            if (shouldLock) {
+              throw new Error(
+                "Compte verrouillé après " +
+                  MAX_FAILED_ATTEMPTS +
+                  " tentatives échouées. Contactez l'administrateur."
+              );
+            }
+          }
+
+          throw new Error("Identifiant ou mot de passe incorrect");
         }
 
-        // Update last login
+        // --- Successful login ---
         await db.user.update({
           where: { id: user.id },
-          data: { lastLoginAt: new Date() },
+          data: {
+            lastLoginAt: new Date(),
+            failedLoginAttempts: 0, // Reset on successful login
+            isLocked: false, // Unlock in case it was manually locked
+          },
         });
 
-        // Log the login
+        // Audit log for successful login (with IP/UA)
         await db.auditLog.create({
           data: {
             userId: user.id,
@@ -79,6 +157,9 @@ export const authOptions: NextAuthOptions = {
             entity: "User",
             entityId: user.id,
             details: "Connexion réussie",
+            ipAddress,
+            userAgent,
+            severity: "info",
           },
         });
 

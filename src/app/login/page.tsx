@@ -131,13 +131,6 @@ export default function LoginPage() {
                   "Se connecter"
                 )}
               </Button>
-
-              <div className="text-xs text-center text-slate-400 mt-4 space-y-1">
-                <p>Fantomas : fantomas / admin</p>
-                <p>Admin : admin@aaea.org / Admin2026!</p>
-                <p>Directeur : f.gosso@aaea.org / AAEA2026!</p>
-                <p>MEAL : a.kanga@aaea.org / AAEA2026!</p>
-              </div>
             </form>
           </CardContent>
         </Card>

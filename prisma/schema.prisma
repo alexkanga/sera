@@ -22,8 +22,9 @@ model User {
   avatar        String?
   phone         String?
   isActive      Boolean   @default(true)
-  isLocked      Boolean   @default(false)
-  lastLoginAt   DateTime?
+  isLocked               Boolean   @default(false)
+  failedLoginAttempts    Int       @default(0)
+  lastLoginAt            DateTime?
   deletedAt     DateTime?
 
   createdAt     DateTime  @default(now())
