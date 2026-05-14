@@ -209,8 +209,8 @@ export const createAcbfDeliverableSchema = z.object({
   name: orgNameField,
   domainId: z.string().min(1, "Le domaine ACBF est requis"),
   description: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  priority: z.string().optional().nullable(),
-  status: z.string().optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
+  status: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
 });
 
 export const updateAcbfDeliverableSchema = z.object({
@@ -223,8 +223,8 @@ export const updateAcbfDeliverableSchema = z.object({
   name: orgNameField.optional(),
   domainId: z.string().min(1, "Le domaine ACBF est requis").optional(),
   description: z.string().max(2000, "Maximum 2000 caractères").optional().nullable(),
-  priority: z.string().optional().nullable(),
-  status: z.string().optional().nullable(),
+  priority: z.enum(["Haute", "Moyenne", "Basse"]).optional().nullable(),
+  status: z.string().max(100, "Maximum 100 caractères").optional().nullable(),
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: "Au moins un champ doit être fourni pour la mise à jour",
 });

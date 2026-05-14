@@ -138,7 +138,11 @@ export async function PUT(
           name: existingDomain.name,
           order: existingDomain.order,
         }),
-        newValue: JSON.stringify(updateData),
+        newValue: JSON.stringify({
+          code: updatedDomain.code,
+          name: updatedDomain.name,
+          order: updatedDomain.order,
+        }),
         details: `Mise à jour du domaine ACBF ${updatedDomain.name}`,
         ipAddress,
         userAgent,
@@ -215,7 +219,7 @@ export async function PATCH(
           action: "ARCHIVE",
           entity: "AcbfDomain",
           entityId: id,
-          oldValue: JSON.stringify({ isActive: true, deletedAt: null }),
+          oldValue: JSON.stringify({ isActive: existingDomain.isActive, deletedAt: existingDomain.deletedAt }),
           newValue: JSON.stringify({
             isActive: false,
             deletedAt: updatedDomain.deletedAt,

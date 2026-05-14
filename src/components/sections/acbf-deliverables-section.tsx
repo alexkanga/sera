@@ -136,9 +136,6 @@ const PRIORITY_OPTIONS = [
 ];
 
 // ============================================================
-// Permission Helpers
-// ============================================================
-// ============================================================
 // Format Helpers
 // ============================================================
 
@@ -225,6 +222,24 @@ export function AcbfDeliverablesSection() {
   // ----- Domain options for dropdown -----
   const [domainOptions, setDomainOptions] = useState<DomainOption[]>([]);
 
+  const fetchDomainOptions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/acbf-domains?limit=100&status=active");
+      if (res.ok) {
+        const data = await res.json();
+        setDomainOptions(
+          data.data.map((d: DomainOption) => ({
+            id: d.id,
+            code: d.code,
+            name: d.name,
+          }))
+        );
+      }
+    } catch {
+      // Silently fail
+    }
+  }, []);
+
   // ----- Form state -----
   const [form, setForm] = useState<DeliverableFormValues>({
     code: "",
@@ -277,29 +292,12 @@ export function AcbfDeliverablesSection() {
   }, [canRead, fetchDeliverables, refreshKey]);
 
   // ============================================================
-  // Fetch Domains for dropdown
+  // Fetch Domains for dropdown (refresh on data changes)
   // ============================================================
 
   useEffect(() => {
-    async function fetchDomains() {
-      try {
-        const res = await fetch("/api/acbf-domains?limit=100&status=active");
-        if (res.ok) {
-          const data = await res.json();
-          setDomainOptions(
-            data.data.map((d: DomainOption) => ({
-              id: d.id,
-              code: d.code,
-              name: d.name,
-            }))
-          );
-        }
-      } catch {
-        // Silently fail
-      }
-    }
-    fetchDomains();
-  }, []);
+    fetchDomainOptions();
+  }, [fetchDomainOptions, refreshKey]);
 
   // ============================================================
   // Reset page when filters change
@@ -1013,8 +1011,10 @@ export function AcbfDeliverablesSection() {
                   setForm((f) => ({ ...f, description: e.target.value }))
                 }
                 rows={3}
+                maxLength={2000}
                 className={formErrors.description ? "border-red-500" : ""}
               />
+              <p className="text-xs text-slate-400 text-right">{(form.description || "").length}/2000</p>
               {formErrors.description && (
                 <p className="text-xs text-red-500">
                   {formErrors.description}
@@ -1173,8 +1173,10 @@ export function AcbfDeliverablesSection() {
                   setForm((f) => ({ ...f, description: e.target.value }))
                 }
                 rows={3}
+                maxLength={2000}
                 className={formErrors.description ? "border-red-500" : ""}
               />
+              <p className="text-xs text-slate-400 text-right">{(form.description || "").length}/2000</p>
               {formErrors.description && (
                 <p className="text-xs text-red-500">
                   {formErrors.description}

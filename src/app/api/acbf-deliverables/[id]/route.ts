@@ -172,7 +172,13 @@ export async function PUT(
           priority: existingDeliverable.priority,
           status: existingDeliverable.status,
         }),
-        newValue: JSON.stringify(updateData),
+        newValue: JSON.stringify({
+          code: updatedDeliverable.code,
+          name: updatedDeliverable.name,
+          domainId: updatedDeliverable.domainId,
+          priority: updatedDeliverable.priority,
+          status: updatedDeliverable.status,
+        }),
         details: `Mise à jour du livrable ACBF ${updatedDeliverable.name}`,
         ipAddress,
         userAgent,
@@ -249,7 +255,7 @@ export async function PATCH(
           action: "ARCHIVE",
           entity: "AcbfDeliverable",
           entityId: id,
-          oldValue: JSON.stringify({ isActive: true, deletedAt: null }),
+          oldValue: JSON.stringify({ isActive: existingDeliverable.isActive, deletedAt: existingDeliverable.deletedAt }),
           newValue: JSON.stringify({
             isActive: false,
             deletedAt: updatedDeliverable.deletedAt,

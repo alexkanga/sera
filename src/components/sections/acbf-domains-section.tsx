@@ -77,6 +77,7 @@ interface DeliverableItem {
   id: string;
   code: string;
   name: string;
+  description: string | null;
   priority: string | null;
   status: string | null;
   isActive: boolean;
@@ -119,13 +120,6 @@ type DomainFormValues = z.infer<typeof domainFormSchema>;
 // ============================================================
 
 const ITEMS_PER_PAGE = 20;
-
-// ============================================================
-// Permission Helpers
-// ============================================================
-// ============================================================
-// Format Helpers
-// ============================================================
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
