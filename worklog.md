@@ -1518,3 +1518,28 @@ Stage Summary:
 - 2.16: Confirmed schemas already centralized — no changes needed
 - 2.17: Error retry uses refreshKey pattern instead of window.location.reload()
 - All fixes verified with lint and dev server
+
+---
+Task ID: Module3-Optimization
+Agent: Main Agent
+Task: Module 3 — Référentiel stratégique (Optimization — 16 fixes)
+
+Work Log:
+- Evaluated all Module 3 files (API routes, frontend section, shared components)
+- Compared against optimized Module 2 patterns (directions/units)
+- Identified 16 issues: 3 CRITIQUE, 4 ÉLEVÉ, 6 MOYEN, 3 MINEUR
+- Fixed CRITIQUE: case-insensitive search, pagination validation, IP/UA in audit logs
+- Fixed ÉLEVÉ: centralized Zod schemas, PATCH action validation, archive linked-activities check, "at least one field" refine
+- Fixed MOYEN: removed formattedAxes mapping, consistent audit log newValue, shared PaginationControls, shared StatusBadge, removed empty section, kept updateData type
+- Fixed MINEUR: optimized handleView fetch, AlertDialog submit state, archive warning text
+- Enhanced StatusBadge shared component with gender prop (m/f) for French grammar
+- Lint check: clean ✅
+- Dev server: running ✅
+- Pushed to GitHub: https://github.com/alexkanga/sera.git ✅
+
+Stage Summary:
+- Module 3 fully optimized with 16 fixes across 5 files
+- Backend: Centralized schemas, case-insensitive search, pagination validation, IP/UA audit, archive guard, consistent audit logging
+- Frontend: Shared PaginationControls and StatusBadge (with gender="m"), optimized view dialog, cleaner AlertDialog
+- Shared: StatusBadge now supports gender prop for correct French grammar (Actif/Active, Inactif/Inactive, Archivé/Archivée)
+- 5 files changed, 158 insertions, 174 deletions (net reduction)
