@@ -344,7 +344,7 @@ export async function GET(request: NextRequest) {
           },
         }),
         details: `Export PTA consolidé au format ${format.toUpperCase()} (${flatRows.length} activités)`,
-        ip,
+        ipAddress: ip,
         userAgent,
       },
     });
