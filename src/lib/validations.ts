@@ -485,7 +485,7 @@ export const ganttFilterSchema = z.object({
   primaryAxisId: z.string().optional(),
   status: activityStatusEnum.optional(),
   priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
-  groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional(),
+  validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional(),
 });
 
 export type GanttFilterValues = z.infer<typeof ganttFilterSchema>;

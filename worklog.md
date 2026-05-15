@@ -1854,3 +1854,149 @@ Stage Summary:
 - Backend: audit logs removed from read-only GET endpoints (C1, C2), validation improved (C3)
 - Frontend: redundant code removed (E1, E2, E3, M1, m1), error handling added (E4), performance improved (M2), accuracy fixed (M3), UX improved (M4)
 - No breaking changes — all modifications are backward compatible
+
+---
+Task ID: M9-Backend
+Agent: Module 9 Backend Optimization Agent
+Task: Module 9 — Gantt dynamique: Backend Optimizations
+
+Work Log:
+- Read worklog.md for project context and existing code patterns ✅
+- Read all 4 target files: middleware.ts, gantt/route.ts, gantt/stats/route.ts, validations.ts ✅
+- O1: Fixed permission code `pta:read` → `gantt:read` in 3 locations ✅
+  - `src/middleware.ts`: Changed `"/api/gantt": "pta:read"` → `"/api/gantt": "gantt:read"`
+  - `src/app/api/gantt/route.ts`: Changed `userHasPermission(currentUser, "pta:read")` → `userHasPermission(currentUser, "gantt:read")`
+  - `src/app/api/gantt/stats/route.ts`: Changed `userHasPermission(currentUser, "pta:read")` → `userHasPermission(currentUser, "gantt:read")`
+- O11: Removed `groupBy` from backend ganttFilterSchema ✅
+  - Removed `groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional()` from `ganttFilterSchema`
+  - Removed `groupBy: searchParams.get("groupBy") || undefined` from main gantt route parse input
+  - `GanttFilterValues` type updated automatically via `z.infer`
+- O12: Added `validationStatus` filter to Gantt backend ✅
+  - Added `validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional()` to `ganttFilterSchema`
+  - Added `validationStatus` handling to `buildFilterWhere` in main gantt route
+  - Added `validationStatus: searchParams.get("validationStatus") || undefined` to main route parse input
+  - Added `validationStatus` handling to `buildFilterWhere` in stats route
+  - Added `validationStatus: searchParams.get("validationStatus") || undefined` to stats route parse input
+- O3: Stats API now accepts filter parameters ✅
+  - Imported `ganttFilterSchema` and `GanttFilterValues` from `@/lib/validations` into stats route
+  - Copied `getBaseWhere` and `buildFilterWhere` functions (with validationStatus support) into stats route
+  - Parse query parameters using `ganttFilterSchema` (same as main route)
+  - Build filtered `where` clause and apply to all stat queries (count, aggregate, overdue, minMax)
+  - Created `buildDurationQuery` function for raw SQL duration calculation that respects the same filters
+  - Overdue where clause extends the base filtered where with endDate/status conditions
+  - Same response format preserved: { data: { totalPlanned, avgProgressRate, overdueCount, avgDurationDays, timelineStart, timelineEnd } }
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- O1: Permission code corrected from `pta:read` to `gantt:read` across middleware and both API routes
+- O3: Stats endpoint now accepts same filter params as main endpoint (search, directionId, primaryAxisId, status, priority, validationStatus) and computes filtered statistics
+- O11: `groupBy` removed from backend `ganttFilterSchema` — frontend handles grouping locally
+- O12: `validationStatus` filter added to `ganttFilterSchema` and applied in both gantt routes
+- All 4 optimizations implemented in the 4 allowed files only (no frontend changes)
+
+---
+Task ID: M9-Frontend
+Agent: Module 9 Frontend Agent
+Task: Module 9 — Gantt dynamique: Frontend Optimizations
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read full gantt-section.tsx (~1696 lines) to understand current state ✅
+- Read gantt API routes to confirm `gantt:read` permission and `validationStatus` filter support ✅
+- Read activity-badges.tsx to confirm ValidationStatusBadge exists ✅
+- Applied all 11 frontend optimizations to `src/components/sections/gantt-section.tsx`:
+
+**O1: Fix permission code `pta:read` → `gantt:read`**
+- Line 596: `checkPermission(session?.user?.roles ?? [], "gantt:read")`
+- Line 824: Permission message updated to `"gantt:read"`
+
+**O2: Remove redundant `filteredActivities` useMemo**
+- Removed `filteredActivities = useMemo(() => activities, [activities])`
+- Replaced all 7 references to `filteredActivities` with `activities` throughout the component
+
+**O4: Fix `isMilestone` detection when `endDate` is null**
+- Changed from: `!activity.endDate || format(new Date(activity.startDate!), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd")`
+- Changed to: `!activity.endDate || (activity.startDate && activity.endDate && format(new Date(activity.startDate), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd"))`
+- Prevents `new Date(null)` producing Jan 1 1970
+
+**O5: Fix stale `today` computation**
+- Replaced `const today = useMemo(() => new Date(), [])` (computed once, never updates)
+- With `useState(() => new Date())` + `useEffect` timer that updates every 60 seconds
+- Today line now stays current if user keeps page open overnight
+
+**O6: Extract render functions as React.memo sub-components**
+- Extracted 5 render functions as separate `memo` components outside GanttSection:
+  - `GanttTooltipContent` — tooltip content with activity details grid
+  - `GanttActivityRow` — left panel activity row with onClick handler prop
+  - `GanttActivityBar` — right panel bar with pre-computed `barPosition` prop
+  - `GanttMobileCard` — mobile card view with onClick handler prop
+  - `GanttViewDialog` — detail dialog with activity, open, onOpenChange, loading props
+- All components have proper TypeScript interfaces
+- Bar position pre-computed in parent and passed as prop for purity
+
+**O7: Add virtual scrolling window**
+- Added `VisualRow` type for unified flat row list (group-header | activity)
+- Added `visibleStartIdx` state with `lastVisibleStartRef` for performance
+- Added `visualRows` useMemo that flattens grouped/ungrouped activities into a flat row list
+- Computed virtual scroll window: `virtualStartIdx`, `virtualEndIdx`, `virtualPaddingTop`, `virtualPaddingBottom`
+- Left panel: uses spacer divs for padding, renders only visible rows
+- Right panel: uses absolute positioning with original indices, renders only visible rows
+- Buffer of 5 rows above and below visible area
+- Scroll handlers updated to track `visibleStartIdx` while maintaining scroll sync
+
+**O8: Make timeline body height dynamic**
+- Replaced hardcoded `maxHeight: 500` with `maxHeight: timelineHeight`
+- Added `timelineHeight` state with resize observer
+- Dynamic calculation: `Math.min(800, Math.max(300, window.innerHeight * 0.7))`
+- Updates on window resize
+
+**O9: Improve mobile detection pattern**
+- Replaced hacky `isMobileRef + mobileView` toggle pattern
+- With clean `isMobile` state + resize listener
+- `const [isMobile, setIsMobile] = useState(false)` with `useEffect` that checks `window.innerWidth < 768`
+- All `isMobileRef.current` references replaced with `isMobile`
+
+**O10: Add stats error handling**
+- Added `statsError` state: `useState<string | null>(null)`
+- `fetchStats` now sets `statsError` in catch block
+- Subtle error indicator below KPI cards with AlertCircle icon, error message, and retry button
+
+**O12: Add `validationStatus` filter**
+- Added `validationStatusFilter` state
+- Added to `fetchActivities` params: `params.set("validationStatus", validationStatusFilter)`
+- Added to `hasActiveFilters` check
+- Added to `resetFilters`
+- Added `VALIDATION_STATUS_OPTIONS` constant (Brouillon, Soumis, Validé, Rejeté)
+- Added Select dropdown in filter bar (5-column grid on lg)
+- Added to `fetchActivities` useCallback dependencies
+
+**O13: Add "Scroll to today" button**
+- Added `scrollToToday` callback that centers the today line in the right panel viewport
+- Uses `rightPanelRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' })`
+- Button with Calendar icon labeled "Aujourd'hui" in header
+- Tooltip: "Centrer sur la date d'aujourd'hui"
+
+**Additional improvements:**
+- Changed KPI card colors from blue to teal/cyan (no indigo/blue as primary)
+- Added `ValidationStatusBadge` import and used it in the view dialog
+- Filter bar grid expanded from 4 to 5 columns to accommodate validation status
+- Clean unused `React` default import removed
+
+- Ran lint check: all clean ✅
+- Dev server running without errors ✅
+
+Stage Summary:
+- All 11 frontend optimizations (O1, O2, O4, O5, O6, O7, O8, O9, O10, O12, O13) implemented
+- Permission code fixed to `gantt:read` matching backend
+- Redundant `filteredActivities` memoization removed
+- Milestone detection fixed for null endDate
+- Today line stays current with 60-second timer
+- 5 render functions extracted as React.memo components for performance
+- Virtual scrolling implemented with VisualRow flat list, 5-row buffer, and padding spacers
+- Dynamic timeline height based on viewport (300-800px, 70% of viewport)
+- Clean mobile detection replacing hacky ref + toggle pattern
+- Stats error handling with subtle error indicator and retry
+- Validation status filter added to filter bar and API requests
+- Scroll-to-today button with smooth horizontal scroll
+- Only modified: `src/components/sections/gantt-section.tsx`

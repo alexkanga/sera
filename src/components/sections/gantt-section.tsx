@@ -6,6 +6,7 @@ import {
   useCallback,
   useMemo,
   useRef,
+  memo,
 } from "react";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -67,7 +68,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { checkPermission } from "@/lib/client-permissions";
-import { PriorityBadge, ActivityStatusBadge } from "@/components/shared/activity-badges";
+import { PriorityBadge, ActivityStatusBadge, ValidationStatusBadge } from "@/components/shared/activity-badges";
 
 // ============================================================
 // Types
@@ -152,6 +153,17 @@ interface GroupData {
 type ZoomLevel = "day" | "week" | "month" | "quarter";
 type GroupBy = "none" | "direction" | "axis" | "responsible" | "status";
 
+// O7: Visual row type for virtual scrolling
+interface VisualRow {
+  type: "activity" | "group-header";
+  activity?: Activity;
+  groupKey?: string;
+  groupLabel?: string;
+  groupAvgProgress?: number;
+  groupActivityCount?: number;
+  isGrouped?: boolean;
+}
+
 // ============================================================
 // Constants
 // ============================================================
@@ -190,6 +202,15 @@ const ACTIVITY_STATUS_OPTIONS = [
   { value: "Annulé", label: "Annulé" },
 ];
 
+// O12: Validation status filter options
+const VALIDATION_STATUS_OPTIONS = [
+  { value: "", label: "Toutes les validations" },
+  { value: "Brouillon", label: "Brouillon" },
+  { value: "Soumis", label: "Soumis" },
+  { value: "Validé", label: "Validé" },
+  { value: "Rejeté", label: "Rejeté" },
+];
+
 const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "none", label: "Aucun" },
   { value: "direction", label: "Par direction" },
@@ -225,7 +246,344 @@ function getDaysBetween(start: string | null, end: string | null): number {
   return differenceInDays(new Date(end), new Date(start));
 }
 
+// ============================================================
+// O6: Extracted Sub-Components
+// ============================================================
 
+// ----- GanttTooltipContent -----
+
+interface GanttTooltipContentProps {
+  activity: Activity;
+}
+
+const GanttTooltipContent = memo(function GanttTooltipContent({ activity }: GanttTooltipContentProps) {
+  const days = getDaysBetween(activity.startDate, activity.endDate);
+  return (
+    <div className="space-y-1.5 text-xs">
+      <div className="font-semibold text-sm">{activity.activityCode}</div>
+      <div className="text-muted-foreground">{activity.title}</div>
+      <Separator className="my-1" />
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+        <span className="text-muted-foreground">Responsable</span>
+        <span>{activity.responsible?.name || "—"}</span>
+        <span className="text-muted-foreground">Direction</span>
+        <span>{activity.direction?.name || "—"}</span>
+        <span className="text-muted-foreground">Début</span>
+        <span>{formatDateShort(activity.startDate)}</span>
+        <span className="text-muted-foreground">Fin</span>
+        <span>{formatDateShort(activity.endDate)}</span>
+        <span className="text-muted-foreground">Durée</span>
+        <span>{days > 0 ? `${days} j` : "—"}</span>
+        <span className="text-muted-foreground">Avancement</span>
+        <span>{activity.progressRate}%</span>
+        <span className="text-muted-foreground">Statut</span>
+        <span>{activity.status}</span>
+        <span className="text-muted-foreground">Priorité</span>
+        <span>{activity.priority}</span>
+      </div>
+    </div>
+  );
+});
+
+// ----- GanttActivityRow -----
+
+interface GanttActivityRowProps {
+  activity: Activity;
+  isGrouped?: boolean;
+  onView: (activity: Activity) => void;
+}
+
+const GanttActivityRow = memo(function GanttActivityRow({ activity, isGrouped = false, onView }: GanttActivityRowProps) {
+  return (
+    <div
+      className={`flex items-center border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
+        isGrouped ? "pl-4" : ""
+      }`}
+      style={{ height: ROW_HEIGHT }}
+      onClick={() => onView(activity)}
+    >
+      <div className="flex-1 min-w-0 px-3 flex items-center gap-2">
+        <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
+          {activity.activityCode}
+        </span>
+        <span className="text-xs text-slate-900 dark:text-white truncate" title={activity.title}>
+          {activity.title.length > 35 ? activity.title.substring(0, 35) + "…" : activity.title}
+        </span>
+      </div>
+      <div className="shrink-0 px-2">
+        <ActivityStatusBadge status={activity.status} />
+      </div>
+    </div>
+  );
+});
+
+// ----- GanttActivityBar -----
+
+interface GanttActivityBarProps {
+  activity: Activity;
+  barPosition: { left: number; width: number; isMilestone: boolean } | null;
+  onView: (activity: Activity) => void;
+}
+
+const GanttActivityBar = memo(function GanttActivityBar({ activity, barPosition, onView }: GanttActivityBarProps) {
+  if (!barPosition) return null;
+
+  const colors = STATUS_COLORS[activity.status] || STATUS_COLORS["Non démarré"];
+
+  if (barPosition.isMilestone) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="absolute cursor-pointer"
+            style={{
+              left: barPosition.left - 6,
+              top: (ROW_HEIGHT - 12) / 2,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onView(activity);
+            }}
+          >
+            <Diamond className={`h-3 w-3 ${colors.fill} fill-current`} />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">
+          <GanttTooltipContent activity={activity} />
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className={`absolute rounded-sm border ${colors.border} cursor-pointer overflow-hidden transition-all hover:shadow-md hover:brightness-110 ${
+            activity.status === "Annulé" ? "opacity-50" : ""
+          }`}
+          style={{
+            left: barPosition.left,
+            width: Math.max(barPosition.width, 8),
+            top: (ROW_HEIGHT - 22) / 2,
+            height: 22,
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onView(activity);
+          }}
+        >
+          {/* Progress fill */}
+          <div
+            className={`h-full ${colors.fill} transition-all`}
+            style={{ width: `${activity.progressRate}%` }}
+          />
+          {/* Bar label */}
+          {barPosition.width > 60 && (
+            <span className="absolute inset-0 flex items-center px-1.5 text-[9px] font-medium text-white dark:text-white truncate pointer-events-none">
+              {activity.progressRate > 0 ? `${activity.progressRate}%` : activity.activityCode}
+            </span>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <GanttTooltipContent activity={activity} />
+      </TooltipContent>
+    </Tooltip>
+  );
+});
+
+// ----- GanttMobileCard -----
+
+interface GanttMobileCardProps {
+  activity: Activity;
+  onView: (activity: Activity) => void;
+}
+
+const GanttMobileCard = memo(function GanttMobileCard({ activity, onView }: GanttMobileCardProps) {
+  const colors = STATUS_COLORS[activity.status] || STATUS_COLORS["Non démarré"];
+  const days = getDaysBetween(activity.startDate, activity.endDate);
+
+  return (
+    <Card
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => onView(activity)}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="min-w-0">
+            <span className="text-[10px] font-mono text-slate-400">{activity.activityCode}</span>
+            <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">
+              {activity.title}
+            </h4>
+          </div>
+          <div className="shrink-0"><ActivityStatusBadge status={activity.status} /></div>
+        </div>
+
+        {/* Mini timeline bar */}
+        <div className={`h-3 rounded-sm border ${colors.border} overflow-hidden mb-2`}>
+          <div
+            className={`h-full ${colors.fill}`}
+            style={{ width: `${activity.progressRate}%` }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{formatDateShort(activity.startDate)} → {formatDateShort(activity.endDate)}</span>
+          <span className="font-medium">{activity.progressRate}%</span>
+        </div>
+        {days > 0 && (
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {days} jours · {activity.responsible?.name || "—"}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+});
+
+// ----- GanttViewDialog -----
+
+interface GanttViewDialogProps {
+  activity: Activity | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  loading: boolean;
+}
+
+const GanttViewDialog = memo(function GanttViewDialog({ activity, open, onOpenChange, loading }: GanttViewDialogProps) {
+  if (!activity) return null;
+  const a = activity;
+  const days = getDaysBetween(a.startDate, a.endDate);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GanttChart className="h-5 w-5 text-emerald-600" />
+            {a.activityCode} — Détail de l&apos;activité
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Loading spinner while fetching details */}
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            <span className="ml-2 text-sm text-muted-foreground">Chargement des détails…</span>
+          </div>
+        )}
+
+        {!loading && (
+        <ScrollArea className="max-h-[65vh] pr-2">
+          <div className="space-y-5 py-2">
+            {/* Identification */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ClipboardList className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Identification</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
+                <div><span className="text-muted-foreground">Code :</span> <span className="font-medium">{a.activityCode}</span></div>
+                <div><span className="text-muted-foreground">Priorité :</span> <PriorityBadge priority={a.priority} /></div>
+                <div className="sm:col-span-2"><span className="text-muted-foreground">Titre :</span> <span className="font-medium">{a.title}</span></div>
+                <div><span className="text-muted-foreground">Nature :</span> <span>{a.nature || "—"}</span></div>
+                <div><span className="text-muted-foreground">Statut :</span> <ActivityStatusBadge status={a.status} /></div>
+                <div><span className="text-muted-foreground">Validation :</span> <ValidationStatusBadge validationStatus={a.validationStatus} /></div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Organisation */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Building2 className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Organisation</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
+                <div><span className="text-muted-foreground">Responsable :</span> <span>{a.responsible?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Direction :</span> <span>{a.direction?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Axe principal :</span> <span>{a.primaryAxis?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Axe secondaire :</span> <span>{a.secondaryAxis?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Domaine ACBF :</span> <span>{a.acbfDomain?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Livrable ACBF :</span> <span>{a.acbfDeliverable?.name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Validateur :</span> <span>{a.validator?.name || "—"}</span></div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Planification */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Calendar className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Planification</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
+                <div><span className="text-muted-foreground">Date début :</span> <span>{formatDate(a.startDate)}</span></div>
+                <div><span className="text-muted-foreground">Date fin :</span> <span>{formatDate(a.endDate)}</span></div>
+                <div><span className="text-muted-foreground">Durée :</span> <span>{days > 0 ? `${days} jours` : "—"}</span></div>
+                <div><span className="text-muted-foreground">Dépendance :</span> <span>{a.dependency || "—"}</span></div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Suivi */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Suivi</h4>
+              </div>
+              <div className="space-y-3 pl-6 text-sm">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-muted-foreground">Avancement</span>
+                    <span className="font-semibold">{a.progressRate}%</span>
+                  </div>
+                  <Progress value={a.progressRate} className="h-2" />
+                </div>
+                <div><span className="text-muted-foreground">Objectif annuel :</span> <span>{a.annualObjective || "—"}</span></div>
+                <div><span className="text-muted-foreground">Indicateur :</span> <span>{a.performanceIndicator || "—"}</span></div>
+                <div><span className="text-muted-foreground">Source de vérification :</span> <span>{a.verificationSource || "—"}</span></div>
+                <div><span className="text-muted-foreground">Livrable attendu :</span> <span>{a.expectedDeliverable || "—"}</span></div>
+              </div>
+            </div>
+
+            {/* Risques & Commentaires */}
+            {(a.riskDescription || a.comments) && (
+              <>
+                <Separator />
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="h-4 w-4 text-emerald-600" />
+                    <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Risques & Commentaires</h4>
+                  </div>
+                  <div className="space-y-2 pl-6 text-sm">
+                    {a.riskDescription && (
+                      <div>
+                        <span className="text-muted-foreground">Risque :</span>
+                        <p className="mt-0.5 text-slate-700 dark:text-slate-300">{a.riskDescription}</p>
+                      </div>
+                    )}
+                    {a.comments && (
+                      <div>
+                        <span className="text-muted-foreground">Commentaires :</span>
+                        <p className="mt-0.5 text-slate-700 dark:text-slate-300">{a.comments}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </ScrollArea>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+});
 
 // ============================================================
 // Main Component
@@ -234,12 +592,14 @@ function getDaysBetween(start: string | null, end: string | null): number {
 export function GanttSection() {
   const { data: session } = useSession();
 
-  // ----- Permission checks -----
-  const canRead = checkPermission(session?.user?.roles ?? [], "pta:read");
+  // ----- Permission checks (O1: gantt:read) -----
+  const canRead = checkPermission(session?.user?.roles ?? [], "gantt:read");
 
   // ----- Stats state -----
   const [stats, setStats] = useState<GanttStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  // O10: Stats error state
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   // ----- List state -----
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -252,6 +612,8 @@ export function GanttSection() {
   const [axisFilter, setAxisFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  // O12: Validation status filter
+  const [validationStatusFilter, setValidationStatusFilter] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -264,8 +626,12 @@ export function GanttSection() {
   // ----- Search debounce (E2) -----
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // M2: TODAY should be computed per render, not at module level
-  const today = useMemo(() => new Date(), []);
+  // O5: Today with periodic update (stale fix)
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setToday(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ----- Group expansion -----
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -279,27 +645,39 @@ export function GanttSection() {
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const isScrollSyncing = useRef(false);
 
-  // ----- Is mobile -----
-  const isMobileRef = useRef(false);
-  const [mobileView, setMobileView] = useState(false);
-
+  // O9: Clean mobile detection
+  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const check = () => {
-      const was = isMobileRef.current;
-      isMobileRef.current = window.innerWidth < 768;
-      if (was !== isMobileRef.current) setMobileView((prev) => !prev);
-    };
+    const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // O8: Dynamic timeline height
+  const [timelineHeight, setTimelineHeight] = useState(500);
+  useEffect(() => {
+    const updateHeight = () => {
+      const h = Math.min(800, Math.max(300, window.innerHeight * 0.7));
+      setTimelineHeight(h);
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, []);
+
+  // O7: Virtual scrolling state
+  const [visibleStartIdx, setVisibleStartIdx] = useState(0);
+  const lastVisibleStartRef = useRef(0);
+  const VIRTUAL_BUFFER = 5;
+
   // ============================================================
-  // Fetch Stats
+  // Fetch Stats (O10: with error handling)
   // ============================================================
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
+    setStatsError(null);
     try {
       const res = await fetch("/api/gantt/stats");
       if (res.status === 401 || res.status === 403) {
@@ -310,8 +688,8 @@ export function GanttSection() {
         const data = await res.json();
         setStats(data.data);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      setStatsError(err instanceof Error ? err.message : "Erreur stats");
     } finally {
       setStatsLoading(false);
     }
@@ -333,7 +711,7 @@ export function GanttSection() {
   }, [search]);
 
   // ============================================================
-  // Fetch Activities
+  // Fetch Activities (O12: with validationStatus filter)
   // ============================================================
 
   const fetchActivities = useCallback(async () => {
@@ -346,6 +724,7 @@ export function GanttSection() {
       if (axisFilter) params.set("primaryAxisId", axisFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (priorityFilter) params.set("priority", priorityFilter);
+      if (validationStatusFilter) params.set("validationStatus", validationStatusFilter);
 
       const res = await fetch(`/api/gantt?${params.toString()}`);
       if (res.status === 401 || res.status === 403) {
@@ -364,7 +743,7 @@ export function GanttSection() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, directionFilter, axisFilter, statusFilter, priorityFilter]);
+  }, [debouncedSearch, directionFilter, axisFilter, statusFilter, priorityFilter, validationStatusFilter]);
 
   useEffect(() => {
     if (canRead) fetchActivities();
@@ -398,10 +777,18 @@ export function GanttSection() {
   }, []);
 
   // ============================================================
-  // Scroll Sync
+  // Scroll Sync (O7: updated for virtual scrolling)
   // ============================================================
 
   const handleLeftScroll = useCallback(() => {
+    if (leftPanelRef.current) {
+      const newStart = Math.floor(leftPanelRef.current.scrollTop / ROW_HEIGHT);
+      if (newStart !== lastVisibleStartRef.current) {
+        lastVisibleStartRef.current = newStart;
+        setVisibleStartIdx(newStart);
+      }
+    }
+    // Sync right panel vertical scroll
     if (isScrollSyncing.current) return;
     isScrollSyncing.current = true;
     if (leftPanelRef.current && rightPanelRef.current) {
@@ -411,6 +798,14 @@ export function GanttSection() {
   }, []);
 
   const handleRightScroll = useCallback(() => {
+    if (rightPanelRef.current) {
+      const newStart = Math.floor(rightPanelRef.current.scrollTop / ROW_HEIGHT);
+      if (newStart !== lastVisibleStartRef.current) {
+        lastVisibleStartRef.current = newStart;
+        setVisibleStartIdx(newStart);
+      }
+    }
+    // Sync left panel vertical scroll
     if (isScrollSyncing.current) return;
     isScrollSyncing.current = true;
     if (leftPanelRef.current && rightPanelRef.current) {
@@ -420,30 +815,21 @@ export function GanttSection() {
   }, []);
 
   // ============================================================
-  // Computed: Filtered Activities
-  // ============================================================
-
-  const filteredActivities = useMemo(() => {
-    return activities;
-  }, [activities]);
-
-  // ============================================================
-  // Computed: Timeline Range
+  // Computed: Timeline Range (O2: uses activities directly)
   // ============================================================
 
   const timelineRange = useMemo(() => {
-    if (filteredActivities.length === 0) {
+    if (activities.length === 0) {
       // Default: current year
       const yearStart = new Date(today.getFullYear(), 0, 1);
       const yearEnd = new Date(today.getFullYear(), 11, 31);
       return { start: yearStart, end: yearEnd };
     }
 
-    let minDate = new Date(filteredActivities[0].startDate!);
-    let maxDate = new Date(filteredActivities[0].startDate!);
+    let minDate = new Date(activities[0].startDate!);
+    let maxDate = new Date(activities[0].startDate!);
 
-    // E1: Replace forEach with for...of
-    for (const a of filteredActivities) {
+    for (const a of activities) {
       if (a.startDate) {
         const s = new Date(a.startDate);
         if (s < minDate) minDate = s;
@@ -467,7 +853,7 @@ export function GanttSection() {
     if (today > maxDate) maxDate = addDays(today, padDays);
 
     return { start: minDate, end: maxDate };
-  }, [filteredActivities, zoom, today]);
+  }, [activities, zoom, today]);
 
   // ============================================================
   // Computed: Timeline Columns (headers)
@@ -517,7 +903,6 @@ export function GanttSection() {
       }
       case "quarter": {
         const months = eachMonthOfInterval({ start, end });
-        // Group months into quarters
         const quarters: Array<{
           date: Date;
           label: string;
@@ -582,7 +967,7 @@ export function GanttSection() {
   }, [timelineColumns, zoom]);
 
   // ============================================================
-  // Computed: Get bar position for an activity
+  // Computed: Get bar position for an activity (O4: fixed isMilestone)
   // ============================================================
 
   const getBarPosition = useCallback((activity: Activity) => {
@@ -591,7 +976,8 @@ export function GanttSection() {
     const { start: timelineStart } = timelineRange;
     const activityStart = new Date(activity.startDate);
     const activityEnd = activity.endDate ? new Date(activity.endDate) : addDays(activityStart, 1);
-    const isMilestone = !activity.endDate || format(new Date(activity.startDate!), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd");
+    // O4: Fix isMilestone when endDate is null
+    const isMilestone = !activity.endDate || (activity.startDate && activity.endDate && format(new Date(activity.startDate), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd"));
 
     const totalDays = differenceInDays(timelineRange.end, timelineStart);
     if (totalDays <= 0) return null;
@@ -622,7 +1008,7 @@ export function GanttSection() {
   }, [timelineRange, totalWidth, today]);
 
   // ============================================================
-  // Grouping
+  // Grouping (O2: uses activities directly)
   // ============================================================
 
   const groupedActivities = useMemo((): GroupData[] => {
@@ -630,8 +1016,7 @@ export function GanttSection() {
 
     const groups = new Map<string, Activity[]>();
 
-    // E1: Replace forEach with for...of
-    for (const activity of filteredActivities) {
+    for (const activity of activities) {
       let key = "Non assigné";
       switch (groupBy) {
         case "direction":
@@ -666,7 +1051,46 @@ export function GanttSection() {
         ? Math.round(acts.reduce((sum, a) => sum + a.progressRate, 0) / acts.length * 10) / 10
         : 0,
     }));
-  }, [filteredActivities, groupBy]);
+  }, [activities, groupBy]);
+
+  // ============================================================
+  // O7: Visual rows computation for virtual scrolling
+  // ============================================================
+
+  const visualRows = useMemo((): VisualRow[] => {
+    const rows: VisualRow[] = [];
+    if (groupBy !== "none" && groupedActivities.length > 0) {
+      for (const group of groupedActivities) {
+        rows.push({
+          type: "group-header",
+          groupKey: group.key,
+          groupLabel: group.label,
+          groupAvgProgress: group.avgProgress,
+          groupActivityCount: group.activities.length,
+        });
+        if (expandedGroups.has(group.key)) {
+          for (const activity of group.activities) {
+            rows.push({ type: "activity", activity, isGrouped: true });
+          }
+        }
+      }
+    } else {
+      for (const activity of activities) {
+        rows.push({ type: "activity", activity, isGrouped: false });
+      }
+    }
+    return rows;
+  }, [activities, groupBy, groupedActivities, expandedGroups]);
+
+  // O7: Virtual scrolling visible range
+  const totalRowCount = visualRows.length;
+  const clampedStartIdx = Math.max(0, Math.min(visibleStartIdx, Math.max(0, totalRowCount - 1)));
+  const rowsPerPage = Math.ceil(timelineHeight / ROW_HEIGHT);
+  const virtualStartIdx = Math.max(0, clampedStartIdx - VIRTUAL_BUFFER);
+  const virtualEndIdx = Math.min(totalRowCount, clampedStartIdx + rowsPerPage + VIRTUAL_BUFFER * 2);
+  const visibleRows = visualRows.slice(virtualStartIdx, virtualEndIdx);
+  const virtualPaddingTop = virtualStartIdx * ROW_HEIGHT;
+  const virtualPaddingBottom = Math.max(0, (totalRowCount - virtualEndIdx) * ROW_HEIGHT);
 
   // ============================================================
   // Handlers
@@ -682,6 +1106,7 @@ export function GanttSection() {
     setAxisFilter("");
     setStatusFilter("");
     setPriorityFilter("");
+    setValidationStatusFilter("");
     setGroupBy("none");
   }
 
@@ -701,7 +1126,6 @@ export function GanttSection() {
 
     try {
       const res = await fetch(`/api/activities/${activity.id}`);
-      // m3: Handle 404 case (activity could have been deleted)
       if (res.status === 404) {
         setViewDialogOpen(false);
         toast.error("Cette activité n'existe plus. Elle a peut-être été supprimée.");
@@ -719,13 +1143,22 @@ export function GanttSection() {
     }
   }
 
+  // O13: Scroll to today
+  const scrollToToday = useCallback(() => {
+    if (rightPanelRef.current) {
+      const containerWidth = rightPanelRef.current.clientWidth;
+      const scrollLeft = Math.max(0, todayPosition - containerWidth / 2);
+      rightPanelRef.current.scrollTo({ left: scrollLeft, behavior: "smooth" });
+    }
+  }, [todayPosition]);
+
   // ============================================================
-  // Has active filters
+  // Has active filters (O12: includes validationStatusFilter)
   // ============================================================
 
   const hasActiveFilters = useMemo(() => {
-    return !!(search || directionFilter || axisFilter || statusFilter || priorityFilter);
-  }, [search, directionFilter, axisFilter, statusFilter, priorityFilter]);
+    return !!(search || directionFilter || axisFilter || statusFilter || priorityFilter || validationStatusFilter);
+  }, [search, directionFilter, axisFilter, statusFilter, priorityFilter, validationStatusFilter]);
 
   // ============================================================
   // Render: Loading
@@ -801,7 +1234,7 @@ export function GanttSection() {
   }
 
   // ============================================================
-  // Render: No Permission
+  // Render: No Permission (O1: gantt:read)
   // ============================================================
 
   if (!canRead) {
@@ -821,333 +1254,11 @@ export function GanttSection() {
               Accès restreint
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center max-w-md">
-              Vous n&apos;avez pas la permission &quot;pta:read&quot; nécessaire pour consulter le Gantt.
+              Vous n&apos;avez pas la permission &quot;gantt:read&quot; nécessaire pour consulter le Gantt.
             </p>
           </CardContent>
         </Card>
       </div>
-    );
-  }
-
-  // ============================================================
-  // Render: Activity Row (for Gantt left panel)
-  // ============================================================
-
-  function renderActivityRow(activity: Activity, isGrouped: boolean = false) {
-    return (
-      <div
-        key={activity.id}
-        className={`flex items-center border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
-          isGrouped ? "pl-4" : ""
-        }`}
-        style={{ height: ROW_HEIGHT }}
-        onClick={() => handleView(activity)}
-      >
-        <div className="flex-1 min-w-0 px-3 flex items-center gap-2">
-          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
-            {activity.activityCode}
-          </span>
-          <span className="text-xs text-slate-900 dark:text-white truncate" title={activity.title}>
-            {activity.title.length > 35 ? activity.title.substring(0, 35) + "…" : activity.title}
-          </span>
-        </div>
-        <div className="shrink-0 px-2">
-          <ActivityStatusBadge status={activity.status} />
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================================
-  // Render: Activity Bar (for Gantt right panel)
-  // ============================================================
-
-  function renderActivityBar(activity: Activity) {
-    const pos = getBarPosition(activity);
-    if (!pos) return null;
-
-    const colors = STATUS_COLORS[activity.status] || STATUS_COLORS["Non démarré"];
-    const isMilestone = pos.isMilestone;
-
-    if (isMilestone) {
-      // Diamond shape for milestones
-      return (
-        <Tooltip key={activity.id}>
-          <TooltipTrigger asChild>
-            <div
-              className="absolute cursor-pointer"
-              style={{
-                left: pos.left - 6,
-                top: (ROW_HEIGHT - 12) / 2,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleView(activity);
-              }}
-            >
-              <Diamond className={`h-3 w-3 ${colors.fill} fill-current`} />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs">
-            {renderTooltipContent(activity)}
-          </TooltipContent>
-        </Tooltip>
-      );
-    }
-
-    return (
-      <Tooltip key={activity.id}>
-        <TooltipTrigger asChild>
-          <div
-            className={`absolute rounded-sm border ${colors.border} cursor-pointer overflow-hidden transition-all hover:shadow-md hover:brightness-110 ${
-              activity.status === "Annulé" ? "opacity-50" : ""
-            }`}
-            style={{
-              left: pos.left,
-              width: Math.max(pos.width, 8),
-              top: (ROW_HEIGHT - 22) / 2,
-              height: 22,
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleView(activity);
-            }}
-          >
-            {/* Progress fill */}
-            <div
-              className={`h-full ${colors.fill} transition-all`}
-              style={{ width: `${activity.progressRate}%` }}
-            />
-            {/* Bar label */}
-            {pos.width > 60 && (
-              <span className="absolute inset-0 flex items-center px-1.5 text-[9px] font-medium text-white dark:text-white truncate pointer-events-none">
-                {activity.progressRate > 0 ? `${activity.progressRate}%` : activity.activityCode}
-              </span>
-            )}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs">
-          {renderTooltipContent(activity)}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  // ============================================================
-  // Render: Tooltip Content
-  // ============================================================
-
-  function renderTooltipContent(activity: Activity) {
-    const days = getDaysBetween(activity.startDate, activity.endDate);
-    return (
-      <div className="space-y-1.5 text-xs">
-        <div className="font-semibold text-sm">{activity.activityCode}</div>
-        <div className="text-muted-foreground">{activity.title}</div>
-        <Separator className="my-1" />
-        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-          <span className="text-muted-foreground">Responsable</span>
-          <span>{activity.responsible?.name || "—"}</span>
-          <span className="text-muted-foreground">Direction</span>
-          <span>{activity.direction?.name || "—"}</span>
-          <span className="text-muted-foreground">Début</span>
-          <span>{formatDateShort(activity.startDate)}</span>
-          <span className="text-muted-foreground">Fin</span>
-          <span>{formatDateShort(activity.endDate)}</span>
-          <span className="text-muted-foreground">Durée</span>
-          <span>{days > 0 ? `${days} j` : "—"}</span>
-          <span className="text-muted-foreground">Avancement</span>
-          <span>{activity.progressRate}%</span>
-          <span className="text-muted-foreground">Statut</span>
-          <span>{activity.status}</span>
-          <span className="text-muted-foreground">Priorité</span>
-          <span>{activity.priority}</span>
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================================
-  // Render: Mobile Card View
-  // ============================================================
-
-  function renderMobileCard(activity: Activity) {
-    const colors = STATUS_COLORS[activity.status] || STATUS_COLORS["Non démarré"];
-    const days = getDaysBetween(activity.startDate, activity.endDate);
-
-    return (
-      <Card
-        key={activity.id}
-        className="cursor-pointer hover:shadow-md transition-shadow"
-        onClick={() => handleView(activity)}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="min-w-0">
-              <span className="text-[10px] font-mono text-slate-400">{activity.activityCode}</span>
-              <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                {activity.title}
-              </h4>
-            </div>
-            <div className="shrink-0"><ActivityStatusBadge status={activity.status} /></div>
-          </div>
-
-          {/* Mini timeline bar */}
-          <div className={`h-3 rounded-sm border ${colors.border} overflow-hidden mb-2`}>
-            <div
-              className={`h-full ${colors.fill}`}
-              style={{ width: `${activity.progressRate}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{formatDateShort(activity.startDate)} → {formatDateShort(activity.endDate)}</span>
-            <span className="font-medium">{activity.progressRate}%</span>
-          </div>
-          {days > 0 && (
-            <div className="text-[10px] text-muted-foreground mt-1">
-              {days} jours · {activity.responsible?.name || "—"}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // ============================================================
-  // Render: View Dialog
-  // ============================================================
-
-  function renderViewDialog() {
-    if (!selectedActivity) return null;
-    const a = selectedActivity;
-    const days = getDaysBetween(a.startDate, a.endDate);
-
-    return (
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GanttChart className="h-5 w-5 text-emerald-600" />
-              {a.activityCode} — Détail de l&apos;activité
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* E3: Loading spinner while fetching details */}
-          {viewLoading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
-              <span className="ml-2 text-sm text-muted-foreground">Chargement des détails…</span>
-            </div>
-          )}
-
-          {!viewLoading && (
-          <ScrollArea className="max-h-[65vh] pr-2">
-            <div className="space-y-5 py-2">
-              {/* Identification */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <ClipboardList className="h-4 w-4 text-emerald-600" />
-                  <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Identification</h4>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
-                  <div><span className="text-muted-foreground">Code :</span> <span className="font-medium">{a.activityCode}</span></div>
-                  <div><span className="text-muted-foreground">Priorité :</span> <PriorityBadge priority={a.priority} /></div>
-                  <div className="sm:col-span-2"><span className="text-muted-foreground">Titre :</span> <span className="font-medium">{a.title}</span></div>
-                  <div><span className="text-muted-foreground">Nature :</span> <span>{a.nature || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Statut :</span> <ActivityStatusBadge status={a.status} /></div>
-                  <div><span className="text-muted-foreground">Validation :</span> <span>{a.validationStatus}</span></div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Organisation */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Building2 className="h-4 w-4 text-emerald-600" />
-                  <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Organisation</h4>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
-                  <div><span className="text-muted-foreground">Responsable :</span> <span>{a.responsible?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Direction :</span> <span>{a.direction?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Axe principal :</span> <span>{a.primaryAxis?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Axe secondaire :</span> <span>{a.secondaryAxis?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Domaine ACBF :</span> <span>{a.acbfDomain?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Livrable ACBF :</span> <span>{a.acbfDeliverable?.name || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Validateur :</span> <span>{a.validator?.name || "—"}</span></div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Planification */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="h-4 w-4 text-emerald-600" />
-                  <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Planification</h4>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 text-sm">
-                  <div><span className="text-muted-foreground">Date début :</span> <span>{formatDate(a.startDate)}</span></div>
-                  <div><span className="text-muted-foreground">Date fin :</span> <span>{formatDate(a.endDate)}</span></div>
-                  <div><span className="text-muted-foreground">Durée :</span> <span>{days > 0 ? `${days} jours` : "—"}</span></div>
-                  <div><span className="text-muted-foreground">Dépendance :</span> <span>{a.dependency || "—"}</span></div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Suivi */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" />
-                  <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Suivi</h4>
-                </div>
-                <div className="space-y-3 pl-6 text-sm">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-muted-foreground">Avancement</span>
-                      <span className="font-semibold">{a.progressRate}%</span>
-                    </div>
-                    <Progress value={a.progressRate} className="h-2" />
-                  </div>
-                  <div><span className="text-muted-foreground">Objectif annuel :</span> <span>{a.annualObjective || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Indicateur :</span> <span>{a.performanceIndicator || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Source de vérification :</span> <span>{a.verificationSource || "—"}</span></div>
-                  <div><span className="text-muted-foreground">Livrable attendu :</span> <span>{a.expectedDeliverable || "—"}</span></div>
-                </div>
-              </div>
-
-              {/* Risques & Commentaires */}
-              {(a.riskDescription || a.comments) && (
-                <>
-                  <Separator />
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle className="h-4 w-4 text-emerald-600" />
-                      <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Risques & Commentaires</h4>
-                    </div>
-                    <div className="space-y-2 pl-6 text-sm">
-                      {a.riskDescription && (
-                        <div>
-                          <span className="text-muted-foreground">Risque :</span>
-                          <p className="mt-0.5 text-slate-700 dark:text-slate-300">{a.riskDescription}</p>
-                        </div>
-                      )}
-                      {a.comments && (
-                        <div>
-                          <span className="text-muted-foreground">Commentaires :</span>
-                          <p className="mt-0.5 text-slate-700 dark:text-slate-300">{a.comments}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </ScrollArea>
-          )}
-        </DialogContent>
-      </Dialog>
     );
   }
 
@@ -1168,6 +1279,16 @@ export function GanttSection() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* O13: Scroll to today button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={scrollToToday}>
+                <Calendar className="h-4 w-4 mr-1.5" />
+                Aujourd&apos;hui
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Centrer sur la date d&apos;aujourd&apos;hui</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" size="sm" onClick={handleRefresh}>
@@ -1208,7 +1329,7 @@ export function GanttSection() {
         </Card>
 
         {/* Période */}
-        <Card className="border-l-4 border-l-blue-500">
+        <Card className="border-l-4 border-l-teal-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -1225,15 +1346,15 @@ export function GanttSection() {
                   </p>
                 )}
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900">
-                <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 dark:bg-teal-900">
+                <Calendar className="h-5 w-5 text-teal-600 dark:text-teal-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Durée moyenne */}
-        <Card className="border-l-4 border-l-teal-500">
+        <Card className="border-l-4 border-l-cyan-500">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -1243,13 +1364,13 @@ export function GanttSection() {
                 {statsLoading ? (
                   <Skeleton className="h-7 w-16 mt-1" />
                 ) : (
-                  <p className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-1">
+                  <p className="text-2xl font-bold text-cyan-600 dark:text-cyan-400 mt-1">
                     {stats?.avgDurationDays ?? 0} j
                   </p>
                 )}
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 dark:bg-teal-900">
-                <Clock className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 dark:bg-cyan-900">
+                <Clock className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
               </div>
             </div>
           </CardContent>
@@ -1308,8 +1429,20 @@ export function GanttSection() {
         </Card>
       </div>
 
+      {/* O10: Stats error indicator */}
+      {statsError && (
+        <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400 px-1">
+          <AlertCircle className="h-3.5 w-3.5" />
+          <span>Erreur stats : {statsError}</span>
+          <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={fetchStats}>
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Réessayer
+          </Button>
+        </div>
+      )}
+
       {/* ============================================================ */}
-      {/* Filter Bar */}
+      {/* Filter Bar (O12: includes validationStatus filter) */}
       {/* ============================================================ */}
 
       <Card>
@@ -1370,8 +1503,8 @@ export function GanttSection() {
               </div>
             </div>
 
-            {/* Row 2: Dropdowns */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Row 2: Dropdowns (O12: added validationStatus) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <Select value={directionFilter} onValueChange={(v) => setDirectionFilter(v === "__all__" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Toutes les directions" />
@@ -1414,6 +1547,21 @@ export function GanttSection() {
                 </SelectContent>
               </Select>
 
+              {/* O12: Validation status filter */}
+              <Select value={validationStatusFilter} onValueChange={(v) => setValidationStatusFilter(v === "__all__" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Toutes les validations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Toutes les validations</SelectItem>
+                  {VALIDATION_STATUS_OPTIONS.filter((o) => o.value).map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <div className="flex items-center gap-2">
                 <Tabs value={priorityFilter || "__all__"} onValueChange={(v) => setPriorityFilter(v === "__all__" ? "" : v)}>
                   <TabsList className="h-9">
@@ -1441,10 +1589,10 @@ export function GanttSection() {
       </Card>
 
       {/* ============================================================ */}
-      {/* Gantt Chart or Mobile View */}
+      {/* Gantt Chart or Mobile View (O9: uses isMobile state) */}
       {/* ============================================================ */}
 
-      {filteredActivities.length === 0 ? (
+      {activities.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
@@ -1466,8 +1614,8 @@ export function GanttSection() {
             )}
           </CardContent>
         </Card>
-      ) : isMobileRef.current ? (
-        /* ============ Mobile Card View ============ */
+      ) : isMobile ? (
+        /* ============ Mobile Card View (O6: uses GanttMobileCard) ============ */
         <div className="grid grid-cols-1 gap-3">
           {groupBy !== "none" && groupedActivities.length > 0
             ? groupedActivities.map((group) => (
@@ -1498,16 +1646,20 @@ export function GanttSection() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="px-3 pb-3 space-y-2">
-                        {group.activities.map((a) => renderMobileCard(a))}
+                        {group.activities.map((a) => (
+                          <GanttMobileCard key={a.id} activity={a} onView={handleView} />
+                        ))}
                       </div>
                     </CollapsibleContent>
                   </Card>
                 </Collapsible>
               ))
-            : filteredActivities.map((a) => renderMobileCard(a))}
+            : activities.map((a) => (
+                <GanttMobileCard key={a.id} activity={a} onView={handleView} />
+              ))}
         </div>
       ) : (
-        /* ============ Desktop Gantt Chart ============ */
+        /* ============ Desktop Gantt Chart (O7: virtual scrolling, O8: dynamic height) ============ */
         <Card className="overflow-hidden">
           <div className="flex">
             {/* Left Panel — Activity List */}
@@ -1521,46 +1673,54 @@ export function GanttSection() {
                 style={{ height: HEADER_HEIGHT }}
               >
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                  Activités ({filteredActivities.length})
+                  Activités ({activities.length})
                 </span>
               </div>
-              {/* Left Body */}
+              {/* Left Body (O7: virtual scrolling) */}
               <div
                 ref={leftPanelRef}
                 onScroll={handleLeftScroll}
                 className="overflow-y-auto"
-                style={{ maxHeight: 500 }}
+                style={{ maxHeight: timelineHeight }}
               >
-                {groupBy !== "none" && groupedActivities.length > 0
-                  ? groupedActivities.map((group) => (
-                      <div key={group.key}>
-                        {/* Group Header Row */}
+                {virtualPaddingTop > 0 && <div style={{ height: virtualPaddingTop }} />}
+                {visibleRows.map((row, i) => {
+                  if (row.type === "group-header") {
+                    return (
+                      <div key={`gh-${row.groupKey}`}>
                         <div
                           className="flex items-center px-3 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                           style={{ height: ROW_HEIGHT }}
-                          onClick={() => toggleGroup(group.key)}
+                          onClick={() => toggleGroup(row.groupKey!)}
                         >
-                          {expandedGroups.has(group.key) ? (
+                          {expandedGroups.has(row.groupKey!) ? (
                             <ChevronDown className="h-3.5 w-3.5 text-emerald-600 mr-1.5 shrink-0" />
                           ) : (
                             <ChevronRight className="h-3.5 w-3.5 text-emerald-600 mr-1.5 shrink-0" />
                           )}
                           <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                            {group.label}
+                            {row.groupLabel}
                           </span>
                           <Badge className="ml-auto text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 border-0 shrink-0">
-                            {group.activities.length}
+                            {row.groupActivityCount}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground ml-2 shrink-0">
-                            {group.avgProgress}%
+                            {row.groupAvgProgress}%
                           </span>
                         </div>
-                        {/* Group Activities */}
-                        {expandedGroups.has(group.key) &&
-                          group.activities.map((a) => renderActivityRow(a, true))}
                       </div>
-                    ))
-                  : filteredActivities.map((a) => renderActivityRow(a))}
+                    );
+                  }
+                  return (
+                    <GanttActivityRow
+                      key={row.activity!.id}
+                      activity={row.activity!}
+                      isGrouped={row.isGrouped}
+                      onView={handleView}
+                    />
+                  );
+                })}
+                {virtualPaddingBottom > 0 && <div style={{ height: virtualPaddingBottom }} />}
               </div>
             </div>
 
@@ -1598,16 +1758,16 @@ export function GanttSection() {
                 </div>
               </div>
 
-              {/* Timeline Body */}
+              {/* Timeline Body (O7: virtual scrolling, O8: dynamic height) */}
               <div
                 ref={rightPanelRef}
                 onScroll={handleRightScroll}
                 className="overflow-auto"
-                style={{ maxHeight: 500 }}
+                style={{ maxHeight: timelineHeight }}
               >
                 <div
                   className="relative"
-                  style={{ width: totalWidth, minHeight: filteredActivities.length * ROW_HEIGHT }}
+                  style={{ width: totalWidth, minHeight: totalRowCount * ROW_HEIGHT }}
                 >
                   {/* Today Line */}
                   {todayPosition >= 0 && todayPosition <= totalWidth && (
@@ -1621,66 +1781,46 @@ export function GanttSection() {
                     </div>
                   )}
 
-                  {/* Activity Rows */}
-                  {groupBy !== "none" && groupedActivities.length > 0
-                    ? groupedActivities.map((group) => {
-                        let groupStartIdx = 0;
-                        // Find the start index of this group in the flat list
-                        for (const g of groupedActivities) {
-                          if (g.key === group.key) break;
-                          groupStartIdx += 1 + (expandedGroups.has(g.key) ? g.activities.length : 0);
-                        }
-
-                        return (
-                          <div key={group.key}>
-                            {/* Group header row in timeline */}
-                            <div
-                              className="absolute left-0 right-0 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center px-2"
-                              style={{
-                                top: groupStartIdx * ROW_HEIGHT,
-                                height: ROW_HEIGHT,
-                              }}
-                            >
-                              <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                                <div
-                                  className="h-full bg-emerald-500 rounded-full"
-                                  style={{ width: `${group.avgProgress}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Activity bars */}
-                            {expandedGroups.has(group.key) &&
-                              group.activities.map((a, idx) => {
-                                const rowIdx = groupStartIdx + 1 + idx;
-                                return (
-                                  <div
-                                    key={a.id}
-                                    className="absolute left-0 right-0 border-b border-slate-50 dark:border-slate-800/50"
-                                    style={{
-                                      top: rowIdx * ROW_HEIGHT,
-                                      height: ROW_HEIGHT,
-                                    }}
-                                  >
-                                    {renderActivityBar(a)}
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        );
-                      })
-                    : filteredActivities.map((a, idx) => (
+                  {/* Activity Rows (virtual) */}
+                  {visibleRows.map((row, i) => {
+                    const actualIdx = virtualStartIdx + i;
+                    if (row.type === "group-header") {
+                      return (
                         <div
-                          key={a.id}
-                          className="absolute left-0 right-0 border-b border-slate-50 dark:border-slate-800/50"
+                          key={`gh-${row.groupKey}`}
+                          className="absolute left-0 right-0 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center px-2"
                           style={{
-                            top: idx * ROW_HEIGHT,
+                            top: actualIdx * ROW_HEIGHT,
                             height: ROW_HEIGHT,
                           }}
                         >
-                          {renderActivityBar(a)}
+                          <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full"
+                              style={{ width: `${row.groupAvgProgress}%` }}
+                            />
+                          </div>
                         </div>
-                      ))}
+                      );
+                    }
+                    const barPos = getBarPosition(row.activity!);
+                    return (
+                      <div
+                        key={row.activity!.id}
+                        className="absolute left-0 right-0 border-b border-slate-50 dark:border-slate-800/50"
+                        style={{
+                          top: actualIdx * ROW_HEIGHT,
+                          height: ROW_HEIGHT,
+                        }}
+                      >
+                        <GanttActivityBar
+                          activity={row.activity!}
+                          barPosition={barPos}
+                          onView={handleView}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1688,8 +1828,13 @@ export function GanttSection() {
         </Card>
       )}
 
-      {/* View Dialog */}
-      {renderViewDialog()}
+      {/* View Dialog (O6: uses GanttViewDialog) */}
+      <GanttViewDialog
+        activity={selectedActivity}
+        open={viewDialogOpen}
+        onOpenChange={setViewDialogOpen}
+        loading={viewLoading}
+      />
     </div>
   );
 }

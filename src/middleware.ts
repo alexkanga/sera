@@ -20,7 +20,7 @@ const routePermissions: Record<string, string> = {
   "/api/pta-consolide": "pta:read",
   "/api/evidence": "evidence:read",
   "/api/raci": "raci:read",
-  "/api/gantt": "pta:read",
+  "/api/gantt": "gantt:read",
   "/api/kpi": "kpi:read",
   "/api/reports": "reports:read",
   "/api/notifications": "notifications:read",

@@ -68,6 +68,10 @@ function buildFilterWhere(params: GanttFilterValues): Record<string, unknown> {
     where.priority = params.priority;
   }
 
+  if (params.validationStatus) {
+    where.validationStatus = params.validationStatus;
+  }
+
   return where;
 }
 
@@ -78,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess = userHasPermission(currentUser, "pta:read");
+    const hasAccess = userHasPermission(currentUser, "gantt:read");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
@@ -92,7 +96,7 @@ export async function GET(request: NextRequest) {
       primaryAxisId: searchParams.get("primaryAxisId") || undefined,
       status: searchParams.get("status") || undefined,
       priority: searchParams.get("priority") || undefined,
-      groupBy: searchParams.get("groupBy") || undefined,
+      validationStatus: searchParams.get("validationStatus") || undefined,
     });
 
     if (!parseResult.success) {
