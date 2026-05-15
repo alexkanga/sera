@@ -2000,3 +2000,39 @@ Stage Summary:
 - Validation status filter added to filter bar and API requests
 - Scroll-to-today button with smooth horizontal scroll
 - Only modified: `src/components/sections/gantt-section.tsx`
+
+---
+Task ID: M9-Optimizations
+Agent: Main Agent
+Task: Module 9 — Gantt dynamique: 13 Optimisations implémentées
+
+Work Log:
+- Analysé le code complet du Module 9 (3 fichiers: API route, stats route, frontend section)
+- Identifié 13 optimisations suivant les patterns établis des Modules 1-7
+- Délégué les optimisations backend et frontend à deux agents parallèles
+- O1: Fix permission pta:read → gantt:read dans middleware.ts, API routes, et frontend
+- O2: Suppression du useMemo redondant filteredActivities (7 références remplacées par activities)
+- O3: Stats API accepte maintenant les mêmes filtres que l'endpoint principal (buildFilterWhere + buildDurationQuery)
+- O4: Fix isMilestone bug quand endDate est null (new Date(null) → Jan 1970)
+- O5: Fix today stale: useMemo(() => new Date(), []) → useState + timer 60s
+- O6: Extraction de 5 render functions en composants React.memo (GanttTooltipContent, GanttActivityRow, GanttActivityBar, GanttMobileCard, GanttViewDialog)
+- O7: Virtual scrolling avec VisualRow, buffer de 5 rangées, spacer divs
+- O8: Hauteur timeline dynamique: Math.min(800, Math.max(300, innerHeight * 0.7))
+- O9: Détection mobile nettoyée: useState + resize listener (remplace ref + toggle hacky)
+- O10: Gestion d'erreur stats: statsError state + indicateur d'erreur avec retry
+- O11: groupBy retiré du ganttFilterSchema backend (feature frontend-only)
+- O12: Filtre validationStatus ajouté au backend et frontend
+- O13: Bouton "Scroll to today" avec smooth scroll vers la ligne aujourd'hui
+- Lint: Clean ✅
+- Dev server: Running without errors ✅
+- Commit: 0db9b05 — Pushed to GitHub ✅
+
+Stage Summary:
+- 13 optimisations implémentées pour le Module 9 Gantt dynamique
+- Permission corrigée: gantt:read (cohérent avec le seed data)
+- Stats API filtrées: les KPI reflètent maintenant les filtres actifs
+- Performance améliorée: virtual scrolling, React.memo, dynamic height
+- UX améliorée: scroll-to-today, validationStatus filter, stats error handling
+- Bug fix: isMilestone avec endDate null
+- Code quality: mobile detection nettoyée, useMemo redondant supprimé
+- 6 fichiers modifiés, +884/-489 lignes
