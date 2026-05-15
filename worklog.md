@@ -1814,3 +1814,43 @@ Stage Summary:
 - Critical fix: Stats route memory bomb resolved (findMany → $queryRaw aggregate)
 - Critical fix: IP/UA audit logging added to both gantt routes
 - Cumulative total: 127 fixes across 8 modules (113 from modules 1-7 + 14 from module 8)
+
+---
+Task ID: 9
+Agent: Module 9 Optimizer Agent
+Task: Module 9 — Gantt dynamique (13 Optimizations)
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read all 4 target files (validations.ts, gantt/route.ts, gantt/stats/route.ts, gantt-section.tsx) ✅
+- Applied 13 optimizations in specified order:
+
+CRITIQUE:
+- C1: Removed audit log from GET /api/gantt (read-only endpoint floods audit_logs table) — removed audit log creation block and getIpAndUserAgent import ✅
+- C2: Removed audit log from GET /api/gantt/stats (same issue) — removed audit log creation block and getIpAndUserAgent import ✅
+- C3: Changed ganttFilterSchema `status: z.string().optional()` to `status: activityStatusEnum.optional()` in validations.ts — uses already-exported enum for proper validation ✅
+
+ÉLEVÉ:
+- E1: Removed `groupBy` parameter from fetchActivities API call — groupBy is only used client-side, no need to send to backend. Also removed `groupBy` from useCallback dependency array ✅
+- E2: Removed redundant `startDate !== null` filter in filteredActivities useMemo — API already filters `startDate: { not: null }` in getBaseWhere() ✅
+- E3: Removed unused `colors` variable in renderActivityRow — function only uses ActivityStatusBadge, not the colors variable ✅
+- E4: Added 401/403 error handling in fetchStats and fetchActivities — shows "Accès refusé" toast and returns early ✅
+
+MOYEN:
+- M1: Removed unused imports `ZoomIn`, `ZoomOut` from lucide-react import ✅
+- M2: Replaced `isMobile` state with `isMobileRef` ref + `mobileView` forceUpdate state — avoids re-renders on every resize, only triggers re-render when crossing 768px threshold ✅
+- M3: Fixed milestone comparison to compare date parts only — changed from `activity.endDate === activity.startDate` to `format(new Date(startDate), "yyyy-MM-dd") === format(new Date(endDate), "yyyy-MM-dd")` ✅
+- M4: Replaced second `Search` icon with `Layers` icon for group-by dropdown — added Layers import, changed icon before group-by Select ✅
+
+MINEUR:
+- m1: Removed stale comment block ("M1: Use shared badges from activity-badges.tsx...") at lines 229-231 ✅
+- m2: getIpAndUserAgent import removal confirmed in both gantt route files (covered by C1 and C2) ✅
+
+- Ran lint check: all clean ✅
+- Dev server running without compilation errors ✅
+
+Stage Summary:
+- All 13 optimizations applied to Module 9 (Gantt dynamique)
+- Backend: audit logs removed from read-only GET endpoints (C1, C2), validation improved (C3)
+- Frontend: redundant code removed (E1, E2, E3, M1, m1), error handling added (E4), performance improved (M2), accuracy fixed (M3), UX improved (M4)
+- No breaking changes — all modifications are backward compatible

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { getIpAndUserAgent } from "@/lib/request-context";
 
 // GET /api/gantt/stats — Gantt timeline statistics
 export async function GET(request: NextRequest) {
@@ -77,25 +76,6 @@ export async function GET(request: NextRequest) {
     // m2: Handle NaN in stats (null progressRate from aggregate)
     const rawAvg = avgProgress._avg.progressRate;
     const avgProgressRate = rawAvg !== null && !isNaN(rawAvg) ? Math.round(rawAvg * 10) / 10 : 0;
-
-    // C2: Audit log with IP and User-Agent
-    const { ip, userAgent } = getIpAndUserAgent(request);
-    await db.auditLog.create({
-      data: {
-        userId: currentUser.id,
-        action: "READ",
-        entity: "GanttChart",
-        entityId: "gantt-stats",
-        newValue: JSON.stringify({
-          totalPlanned,
-          avgProgressRate,
-          overdueCount,
-        }),
-        details: `Consultation stats Gantt — ${totalPlanned} activités planifiées`,
-        ipAddress: ip,
-        userAgent,
-      },
-    });
 
     return NextResponse.json({
       data: {

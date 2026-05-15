@@ -23,8 +23,7 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronRight,
-  ZoomIn,
-  ZoomOut,
+  Layers,
   Diamond,
   ClipboardList,
   Building2,
@@ -226,9 +225,7 @@ function getDaysBetween(start: string | null, end: string | null): number {
   return differenceInDays(new Date(end), new Date(start));
 }
 
-// M1: Use shared badges from activity-badges.tsx for consistency
-// Local getStatusBadge uses STATUS_COLORS for Gantt bar styling (fill/bg/border), kept for bar rendering
-// For badge-only rendering, use shared components
+
 
 // ============================================================
 // Main Component
@@ -283,10 +280,15 @@ export function GanttSection() {
   const isScrollSyncing = useRef(false);
 
   // ----- Is mobile -----
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobileRef = useRef(false);
+  const [mobileView, setMobileView] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      const was = isMobileRef.current;
+      isMobileRef.current = window.innerWidth < 768;
+      if (was !== isMobileRef.current) setMobileView((prev) => !prev);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -300,6 +302,10 @@ export function GanttSection() {
     setStatsLoading(true);
     try {
       const res = await fetch("/api/gantt/stats");
+      if (res.status === 401 || res.status === 403) {
+        toast.error("Accès refusé");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setStats(data.data);
@@ -340,9 +346,12 @@ export function GanttSection() {
       if (axisFilter) params.set("primaryAxisId", axisFilter);
       if (statusFilter) params.set("status", statusFilter);
       if (priorityFilter) params.set("priority", priorityFilter);
-      if (groupBy !== "none") params.set("groupBy", groupBy);
 
       const res = await fetch(`/api/gantt?${params.toString()}`);
+      if (res.status === 401 || res.status === 403) {
+        toast.error("Accès refusé");
+        return;
+      }
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Erreur lors du chargement");
@@ -355,7 +364,7 @@ export function GanttSection() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, directionFilter, axisFilter, statusFilter, priorityFilter, groupBy]);
+  }, [debouncedSearch, directionFilter, axisFilter, statusFilter, priorityFilter]);
 
   useEffect(() => {
     if (canRead) fetchActivities();
@@ -415,7 +424,7 @@ export function GanttSection() {
   // ============================================================
 
   const filteredActivities = useMemo(() => {
-    return activities.filter((a) => a.startDate !== null);
+    return activities;
   }, [activities]);
 
   // ============================================================
@@ -582,7 +591,7 @@ export function GanttSection() {
     const { start: timelineStart } = timelineRange;
     const activityStart = new Date(activity.startDate);
     const activityEnd = activity.endDate ? new Date(activity.endDate) : addDays(activityStart, 1);
-    const isMilestone = !activity.endDate || activity.endDate === activity.startDate;
+    const isMilestone = !activity.endDate || format(new Date(activity.startDate!), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd");
 
     const totalDays = differenceInDays(timelineRange.end, timelineStart);
     if (totalDays <= 0) return null;
@@ -825,7 +834,6 @@ export function GanttSection() {
   // ============================================================
 
   function renderActivityRow(activity: Activity, isGrouped: boolean = false) {
-    const colors = STATUS_COLORS[activity.status] || STATUS_COLORS["Non démarré"];
     return (
       <div
         key={activity.id}
@@ -1327,7 +1335,7 @@ export function GanttSection() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Search className="h-4 w-4 text-slate-400 shrink-0" />
+                <Layers className="h-4 w-4 text-slate-400 shrink-0" />
                 <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Regroupement" />
@@ -1458,7 +1466,7 @@ export function GanttSection() {
             )}
           </CardContent>
         </Card>
-      ) : isMobile ? (
+      ) : isMobileRef.current ? (
         /* ============ Mobile Card View ============ */
         <div className="grid grid-cols-1 gap-3">
           {groupBy !== "none" && groupedActivities.length > 0

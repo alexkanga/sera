@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { getIpAndUserAgent } from "@/lib/request-context";
 import { ganttFilterSchema, type GanttFilterValues } from "@/lib/validations";
 
 // ============================================================
@@ -114,31 +113,6 @@ export async function GET(request: NextRequest) {
         { startDate: "asc" },
         { activityCode: "asc" },
       ],
-    });
-
-    // C2: Audit log with IP and User-Agent
-    const { ip, userAgent } = getIpAndUserAgent(request);
-    await db.auditLog.create({
-      data: {
-        userId: currentUser.id,
-        action: "READ",
-        entity: "GanttChart",
-        entityId: "gantt-view",
-        newValue: JSON.stringify({
-          filterCount: activities.length,
-          filters: {
-            search: params.search || null,
-            directionId: params.directionId || null,
-            primaryAxisId: params.primaryAxisId || null,
-            status: params.status || null,
-            priority: params.priority || null,
-            groupBy: params.groupBy || null,
-          },
-        }),
-        details: `Consultation Gantt — ${activities.length} activités affichées`,
-        ipAddress: ip,
-        userAgent,
-      },
     });
 
     // E4: Remove unused backend grouping computation — frontend handles grouping locally
