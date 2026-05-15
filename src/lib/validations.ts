@@ -393,6 +393,9 @@ export const ptaConsolideExportSchema = z.object({
   responsibleId: z.string().optional(),
 });
 
+export type PtaConsolideFilterValues = z.infer<typeof ptaConsolideFilterSchema>;
+export type PtaConsolideExportValues = z.infer<typeof ptaConsolideExportSchema>;
+
 // ─── RACI Matrix schemas (Module 7) ──────────────────────────────────────
 
 const raciTextField = z
@@ -484,3 +487,5 @@ export const ganttFilterSchema = z.object({
   priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
   groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional(),
 });
+
+export type GanttFilterValues = z.infer<typeof ganttFilterSchema>;

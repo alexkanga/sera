@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { ptaConsolideFilterSchema } from "@/lib/validations";
+import { ptaConsolideFilterSchema, type PtaConsolideFilterValues } from "@/lib/validations";
 
 // ============================================================
 // GET /api/pta-consolide — Liste consolidée avec filtres et groupBy
@@ -42,7 +42,7 @@ function getBaseWhere(): Record<string, unknown> {
 }
 
 // Build filter where clause from query parameters
-function buildFilterWhere(params: z.infer<typeof ptaConsolideFilterSchema>): Record<string, unknown> {
+function buildFilterWhere(params: PtaConsolideFilterValues): Record<string, unknown> {
   const where: Record<string, unknown> = getBaseWhere();
 
   if (params.search) {
@@ -99,7 +99,7 @@ interface GroupedResult {
   [key: string]: unknown;
 }
 
-async function handleGrouped(params: z.infer<typeof ptaConsolideFilterSchema>): Promise<GroupedResult[]> {
+async function handleGrouped(params: PtaConsolideFilterValues): Promise<GroupedResult[]> {
   const where = buildFilterWhere(params);
   const groupBy = params.groupBy!;
 
@@ -248,7 +248,7 @@ async function handleGrouped(params: z.infer<typeof ptaConsolideFilterSchema>): 
 // ============================================================
 // LIST endpoint — consolidated activities with filters
 // ============================================================
-async function handleList(params: z.infer<typeof ptaConsolideFilterSchema>) {
+async function handleList(params: PtaConsolideFilterValues) {
   const where = buildFilterWhere(params);
   const skip = (params.page - 1) * params.limit;
 

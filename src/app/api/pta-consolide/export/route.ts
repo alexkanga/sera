@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
-import { ptaConsolideExportSchema } from "@/lib/validations";
+import { ptaConsolideExportSchema, type PtaConsolideExportValues } from "@/lib/validations";
 import { getIpAndUserAgent } from "@/lib/request-context";
 
 // ============================================================
@@ -188,7 +188,7 @@ function generateCSV(rows: ActivityExportRow[]): string {
 }
 
 // Build filter where clause from export params (E4: apply filters)
-function buildExportFilterWhere(params: z.infer<typeof ptaConsolideExportSchema>): Record<string, unknown> {
+function buildExportFilterWhere(params: PtaConsolideExportValues): Record<string, unknown> {
   const where: Record<string, unknown> = {
     deletedAt: null,
     isActive: true,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { getIpAndUserAgent } from "@/lib/request-context";
-import { ganttFilterSchema } from "@/lib/validations";
+import { ganttFilterSchema, type GanttFilterValues } from "@/lib/validations";
 
 // ============================================================
 // GET /api/gantt — Activities for Gantt chart with filters
@@ -43,7 +43,7 @@ function getBaseWhere(): Record<string, unknown> {
 }
 
 // Build filter where clause
-function buildFilterWhere(params: z.infer<typeof ganttFilterSchema>): Record<string, unknown> {
+function buildFilterWhere(params: GanttFilterValues): Record<string, unknown> {
   const where: Record<string, unknown> = getBaseWhere();
 
   if (params.search) {
@@ -71,8 +71,6 @@ function buildFilterWhere(params: z.infer<typeof ganttFilterSchema>): Record<str
 
   return where;
 }
-
-import { z } from "zod";
 
 export async function GET(request: NextRequest) {
   try {
