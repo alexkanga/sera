@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import {
   Card,
   CardContent,
@@ -21,6 +22,7 @@ import {
   Clock,
   Building2,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Bar,
@@ -35,6 +37,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { checkPermission } from "@/lib/client-permissions";
 
 // Types
 interface UserData {
@@ -131,6 +134,9 @@ function getActionBadge(action: string) {
 }
 
 export function DashboardSection() {
+  const { data: session } = useSession();
+  const canViewDashboard = checkPermission(session?.user?.roles ?? [], "audit:read") ||
+                          checkPermission(session?.user?.roles ?? [], "users:read");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
   const [roleStats, setRoleStats] = useState<RoleStat[]>([]);
@@ -140,6 +146,7 @@ export function DashboardSection() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
+    if (!canViewDashboard) return;
     setLoading(true);
     setError(null);
     try {
@@ -209,11 +216,38 @@ export function DashboardSection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canViewDashboard]);
 
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  // No permission state
+  if (!canViewDashboard) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Tableau de bord
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Vue d&apos;ensemble de la plateforme AAEA Pilotage 360
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 mb-4">
+              <ShieldCheck className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Accès restreint</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center max-w-md">
+              Vous n&apos;avez pas les permissions nécessaires pour consulter le tableau de bord.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Loading state
   if (loading) {
@@ -325,7 +359,7 @@ export function DashboardSection() {
           Tableau de bord
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Vue d&apos;ensemble de la plateforme AAEA Pilotage 360 — Module 1 : Authentification et gestion des rôles
+          Vue d&apos;ensemble de la plateforme AAEA Pilotage 360 — Pilotage 360
         </p>
       </div>
 

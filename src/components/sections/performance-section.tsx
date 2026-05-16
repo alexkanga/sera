@@ -7,7 +7,6 @@ import {
   BarChart3,
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
   Clock,
   Download,
   FileSpreadsheet,
@@ -31,6 +30,8 @@ import {
   Gauge,
   Activity,
   ClipboardList,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -92,7 +93,6 @@ import {
   YAxis,
   CartesianGrid,
   Cell,
-  Legend,
 } from "recharts";
 import {
   ChartContainer,
@@ -103,6 +103,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { checkPermission } from "@/lib/client-permissions";
+import { getProgressBg } from "@/components/shared/activity-badges";
 
 // ============================================================
 // Types
@@ -153,20 +154,41 @@ interface KpiSnapshot {
   notes: string | null;
 }
 
-interface DashboardData {
+interface DashboardGlobal {
   totalActivities: number;
-  totalActivitiesLastMonth: number;
   avgProgress: number;
   validationRate: number;
-  lateCount: number;
-  raciRate: number;
-  verifiedEvidenceCount: number;
+  overdueCount: number;
+  validatedCount: number;
+  totalActivitiesLastMonth: number;
+}
+
+interface DashboardEvidence {
+  total: number;
+  verified: number;
+  verificationRate: number;
+  byCategory: { category: string; count: number }[];
+}
+
+interface DashboardRaci {
+  totalRaciEntries: number;
+  activitiesWithRaci: number;
+  coverage: number;
+}
+
+interface DashboardData {
+  global: DashboardGlobal;
+  byDirection: { id: string; code: string; name: string; count: number; avgProgress: number }[];
+  byStrategicAxis: { id: string; code: string; name: string; count: number; avgProgress: number }[];
   byStatus: { status: string; count: number }[];
-  byDirection: { name: string; avgProgress: number }[];
-  monthlyTrend: { month: string; avgProgress: number }[];
-  validationPipeline: { direction: string; Brouillon: number; Soumis: number; Validé: number; Rejeté: number }[];
-  byStrategicAxis: { name: string; avgProgress: number; count: number }[];
-  byAcbfDomain: { name: string; count: number }[];
+  byPriority: { priority: string; count: number }[];
+  byAcbfDomain: { id: string; code: string; name: string; count: number }[];
+  validationPipeline: { status: string; count: number }[];
+  validationPipelineByDirection: { direction: string; Brouillon: number; Soumis: number; Validé: number; Rejeté: number }[];
+  evidence: DashboardEvidence;
+  raci: DashboardRaci;
+  monthlyProgressTrend: { month: string; avgProgress: number; activityCount: number }[];
+  kpiDefinitions: { id: string; code: string; name: string; category: string; targetValue: number; currentValue: number; unit: string; direction: string; frequency: string; strategicAxis: string | null; orgDirection: string | null; latestSnapshot: string | null; achievementRate: number }[];
 }
 
 // ============================================================
@@ -189,9 +211,6 @@ const KPI_UNITS = ["%", "Nombre", "Jours", "Score", "Ratio"];
 const KPI_FREQUENCIES = ["Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"];
 const KPI_DIRECTIONS_VAL = ["higher", "lower"];
 
-// ============================================================
-// Permission Helper
-// ============================================================
 // ============================================================
 // Chart Configs
 // ============================================================
@@ -230,6 +249,7 @@ const pipelineBarConfig: ChartConfig = {
 function getKpiStatusColor(kpi: KpiDefinition): string {
   const { currentValue, targetValue, direction } = kpi;
   if (targetValue === 0) return "amber";
+  if (currentValue === 0 && direction === "lower") return "amber";
   const ratio = direction === "higher"
     ? currentValue / targetValue
     : targetValue / currentValue;
@@ -241,8 +261,8 @@ function getKpiStatusColor(kpi: KpiDefinition): string {
 function getKpiTrendIcon(kpi: KpiDefinition) {
   const snapshots = kpi.snapshots || [];
   if (snapshots.length < 2) return <Minus className="h-3.5 w-3.5 text-slate-400" />;
-  const lastTwo = snapshots.slice(-2);
-  const diff = lastTwo[1].value - lastTwo[0].value;
+  const lastTwo = snapshots.slice(0, 2);
+  const diff = lastTwo[0].value - lastTwo[1].value;
   if (diff > 0) return <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />;
   if (diff < 0) return <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />;
   return <Minus className="h-3.5 w-3.5 text-slate-400" />;
@@ -250,17 +270,11 @@ function getKpiTrendIcon(kpi: KpiDefinition) {
 
 function getKpiProgress(kpi: KpiDefinition): number {
   if (kpi.targetValue === 0) return 0;
+  if (kpi.currentValue === 0 && kpi.direction === "lower") return 0;
   const ratio = kpi.direction === "higher"
     ? kpi.currentValue / kpi.targetValue
     : kpi.targetValue / kpi.currentValue;
   return Math.min(Math.round(ratio * 100), 100);
-}
-
-function getProgressBg(rate: number): string {
-  if (rate >= 75) return "bg-emerald-500";
-  if (rate >= 50) return "bg-blue-500";
-  if (rate >= 25) return "bg-amber-500";
-  return "bg-slate-400";
 }
 
 function getCategoryBadge(category: string) {
@@ -304,6 +318,8 @@ export function PerformanceSection() {
   const [directionFilter, setDirectionFilter] = useState("");
   const [kpiStatusFilter, setKpiStatusFilter] = useState("active");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [kpiPage, setKpiPage] = useState(1);
+  const [kpiTotalPages, setKpiTotalPages] = useState(1);
 
   // Dropdown options
   const [directionOptions, setDirectionOptions] = useState<DirectionOption[]>([]);
@@ -374,7 +390,12 @@ export function PerformanceSection() {
       if (categoryFilter) params.set("category", categoryFilter);
       if (axisFilter) params.set("strategicAxisId", axisFilter);
       if (directionFilter) params.set("directionId", directionFilter);
-      if (kpiStatusFilter) params.set("status", kpiStatusFilter);
+      if (kpiStatusFilter) {
+        const isActiveMap: Record<string, string> = { active: "true", archived: "false", all: "all" };
+        params.set("isActive", isActiveMap[kpiStatusFilter] || "true");
+      }
+      params.set("page", kpiPage.toString());
+      params.set("limit", "20");
 
       const res = await fetch(`/api/kpi?${params.toString()}`);
       if (!res.ok) {
@@ -383,12 +404,13 @@ export function PerformanceSection() {
       }
       const data = await res.json();
       setKpis(data.data || []);
+      setKpiTotalPages(data.pagination?.totalPages || 1);
     } catch (err) {
       setKpiError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setKpiLoading(false);
     }
-  }, [search, categoryFilter, axisFilter, directionFilter, kpiStatusFilter]);
+  }, [search, categoryFilter, axisFilter, directionFilter, kpiStatusFilter, kpiPage]);
 
   // ============================================================
   // Fetch Dropdown Options
@@ -421,12 +443,25 @@ export function PerformanceSection() {
   // ============================================================
 
   useEffect(() => {
-    if (canRead) fetchDashboard();
-  }, [canRead, fetchDashboard, refreshKey]);
+    if (canRead) {
+      fetchDashboard();
+      fetchKpis();
+    }
+  }, [canRead, fetchDashboard, fetchKpis, refreshKey]);
 
+  // Auto-refresh polling (60s)
   useEffect(() => {
-    if (canRead) fetchKpis();
-  }, [canRead, fetchKpis, refreshKey]);
+    if (!canRead) return;
+    const interval = setInterval(() => {
+      fetchDashboard();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [canRead, fetchDashboard]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setKpiPage(1);
+  }, [search, categoryFilter, axisFilter, directionFilter, kpiStatusFilter]);
 
   // ============================================================
   // Form Reset Helpers
@@ -664,9 +699,7 @@ export function PerformanceSection() {
   // Filtered KPIs
   // ============================================================
 
-  const filteredKpis = useMemo(() => {
-    return kpis;
-  }, [kpis]);
+  const filteredKpis = kpis;
 
   const hasActiveFilters = useMemo(() => {
     return !!(search || categoryFilter || axisFilter || directionFilter || kpiStatusFilter !== "active");
@@ -774,7 +807,7 @@ export function PerformanceSection() {
   // ============================================================
 
   const activityTrend = dashboard
-    ? dashboard.totalActivities - dashboard.totalActivitiesLastMonth
+    ? dashboard.global.totalActivities - (dashboard.global.totalActivitiesLastMonth || 0)
     : 0;
 
   // ============================================================
@@ -796,7 +829,7 @@ export function PerformanceSection() {
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <Button variant="outline" size="sm" onClick={handleRefresh} aria-label="Rafraîchir les données">
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -833,7 +866,7 @@ export function PerformanceSection() {
                       Activités
                     </p>
                     <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                      {dashboard?.totalActivities ?? 0}
+                      {dashboard?.global.totalActivities ?? 0}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
@@ -860,9 +893,9 @@ export function PerformanceSection() {
                       Avancement moyen
                     </p>
                     <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                      {Math.round(dashboard?.avgProgress ?? 0)}%
+                      {Math.round(dashboard?.global.avgProgress ?? 0)}%
                     </p>
-                    <Progress value={dashboard?.avgProgress ?? 0} className="h-1.5 mt-2" />
+                    <Progress value={dashboard?.global.avgProgress ?? 0} className="h-1.5 mt-2" />
                   </div>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900 ml-2">
                     <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -880,7 +913,7 @@ export function PerformanceSection() {
                       Taux validation
                     </p>
                     <p className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-1">
-                      {Math.round(dashboard?.validationRate ?? 0)}%
+                      {Math.round(dashboard?.global.validationRate ?? 0)}%
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">% Validé</p>
                   </div>
@@ -900,7 +933,7 @@ export function PerformanceSection() {
                       En retard
                     </p>
                     <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
-                      {dashboard?.lateCount ?? 0}
+                      {dashboard?.global.overdueCount ?? 0}
                     </p>
                   </div>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900">
@@ -919,7 +952,7 @@ export function PerformanceSection() {
                       Taux RACI
                     </p>
                     <p className="text-2xl font-bold text-violet-600 dark:text-violet-400 mt-1">
-                      {Math.round(dashboard?.raciRate ?? 0)}%
+                      {Math.round(dashboard?.raci.coverage ?? 0)}%
                     </p>
                   </div>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900">
@@ -938,7 +971,7 @@ export function PerformanceSection() {
                       Preuves vérifiées
                     </p>
                     <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-                      {dashboard?.verifiedEvidenceCount ?? 0}
+                      {dashboard?.evidence.verified ?? 0}
                     </p>
                   </div>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900">
@@ -1043,14 +1076,14 @@ export function PerformanceSection() {
                 <CardDescription className="text-xs">Avancement moyen sur les 6 derniers mois</CardDescription>
               </CardHeader>
               <CardContent>
-                {(dashboard?.monthlyTrend?.length ?? 0) === 0 ? (
+                {(dashboard?.monthlyProgressTrend?.length ?? 0) === 0 ? (
                   <div className="flex items-center justify-center h-48 text-muted-foreground">
                     <p className="text-sm">Aucune donnée disponible</p>
                   </div>
                 ) : (
                   <ChartContainer config={trendLineConfig} className="h-64 w-full">
                     <LineChart
-                      data={dashboard?.monthlyTrend || []}
+                      data={dashboard?.monthlyProgressTrend || []}
                       margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" />
@@ -1081,14 +1114,14 @@ export function PerformanceSection() {
                 <CardDescription className="text-xs">Statuts de validation par direction</CardDescription>
               </CardHeader>
               <CardContent>
-                {(dashboard?.validationPipeline?.length ?? 0) === 0 ? (
+                {(dashboard?.validationPipelineByDirection?.length ?? 0) === 0 ? (
                   <div className="flex items-center justify-center h-48 text-muted-foreground">
                     <p className="text-sm">Aucune donnée disponible</p>
                   </div>
                 ) : (
                   <ChartContainer config={pipelineBarConfig} className="h-64 w-full">
                     <BarChart
-                      data={dashboard?.validationPipeline || []}
+                      data={dashboard?.validationPipelineByDirection || []}
                       margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" />
@@ -1492,6 +1525,33 @@ export function PerformanceSection() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {kpiTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setKpiPage((p) => Math.max(1, p - 1))}
+                disabled={kpiPage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Précédent
+              </Button>
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                Page {kpiPage} / {kpiTotalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setKpiPage((p) => Math.min(kpiTotalPages, p + 1))}
+                disabled={kpiPage >= kpiTotalPages}
+              >
+                Suivant
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
             </div>
           )}
         </TabsContent>

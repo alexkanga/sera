@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Centralized validation schemas for Module 1 (Auth & User Management).
+ * Centralized validation schemas for all modules.
  * Shared between API routes to avoid duplication and ensure consistency.
  */
 
@@ -396,7 +396,7 @@ export const ptaConsolideExportSchema = z.object({
 export type PtaConsolideFilterValues = z.infer<typeof ptaConsolideFilterSchema>;
 export type PtaConsolideExportValues = z.infer<typeof ptaConsolideExportSchema>;
 
-// ─── RACI Matrix schemas (Module 7) ──────────────────────────────────────
+// ─── RACI Matrix schemas (Module 8) ──────────────────────────────────────
 
 const raciTextField = z
   .string()
@@ -483,9 +483,130 @@ export const ganttFilterSchema = z.object({
   search: z.string().optional(),
   directionId: z.string().optional(),
   primaryAxisId: z.string().optional(),
-  status: activityStatusEnum.optional(),
+  status: z.string().optional(),
   priority: z.enum(["Haute", "Moyenne", "Basse"]).optional(),
   validationStatus: z.enum(["Brouillon", "Soumis", "Validé", "Rejeté"]).optional(),
+  groupBy: z.enum(["none", "direction", "axis", "responsible", "status"]).optional(),
 });
 
 export type GanttFilterValues = z.infer<typeof ganttFilterSchema>;
+
+// ============================================================
+// KPI Validation Schemas (Module 10)
+// ============================================================
+
+/**
+ * Schema for creating a new KPI definition
+ */
+export const createKpiFormSchema = z.object({
+  code: z.string().min(1, "Le code est requis"),
+  name: z.string().min(1, "Le nom est requis"),
+  description: z.string().optional().nullable(),
+  category: z.enum(["Stratégique", "Opérationnel", "Organisationnel", "Qualité"], {
+    message: "Catégorie invalide. Utilisez Stratégique, Opérationnel, Organisationnel ou Qualité",
+  }),
+  targetValue: z.number().default(0),
+  currentValue: z.number().default(0),
+  unit: z.string().optional().nullable(),
+  direction: z.enum(["higher", "lower"]).default("higher"),
+  frequency: z.enum(["Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"]).default("Mensuel"),
+  strategicAxisId: z.string().optional().nullable(),
+  directionId: z.string().optional().nullable(),
+  isPublic: z.boolean().default(true),
+});
+
+/**
+ * Schema for updating an existing KPI definition
+ */
+export const updateKpiFormSchema = z.object({
+  code: z.string().optional(),
+  name: z.string().optional(),
+  description: z.string().optional().nullable(),
+  category: z.enum(["Stratégique", "Opérationnel", "Organisationnel", "Qualité"]).optional(),
+  targetValue: z.number().optional(),
+  currentValue: z.number().optional(),
+  unit: z.string().optional().nullable(),
+  direction: z.enum(["higher", "lower"]).optional(),
+  frequency: z.enum(["Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"]).optional(),
+  strategicAxisId: z.string().optional().nullable(),
+  directionId: z.string().optional().nullable(),
+  isPublic: z.boolean().optional(),
+});
+
+/**
+ * Schema for capturing a KPI snapshot
+ * Includes period format validation (YYYY-MM or YYYY-QN)
+ */
+export const captureSnapshotFormSchema = z.object({
+  value: z.number({ message: "La valeur est requise" }),
+  targetValue: z.number().optional(),
+  period: z.string().min(1, "La période est requise").regex(
+    /^\d{4}(-\d{2}|-Q[1-4])?$/,
+    "Format invalide (YYYY-MM ou YYYY-QN)"
+  ),
+  notes: z.string().optional().nullable(),
+});
+
+/**
+ * Schema for filtering KPI definitions
+ */
+export const kpiFilterSchema = z.object({
+  search: z.string().optional(),
+  category: z.string().optional(),
+  strategicAxisId: z.string().optional(),
+  directionId: z.string().optional(),
+  isActive: z.enum(["true", "false", "all"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ============================================================
+// KPI Named Types (Module 10)
+// ============================================================
+
+export type CreateKpiFormValues = {
+  code: string;
+  name: string;
+  description?: string | null;
+  category: "Stratégique" | "Opérationnel" | "Organisationnel" | "Qualité";
+  targetValue: number;
+  currentValue: number;
+  unit?: string | null;
+  direction: "higher" | "lower";
+  frequency: "Quotidien" | "Hebdomadaire" | "Mensuel" | "Trimestriel" | "Annuel";
+  strategicAxisId?: string | null;
+  directionId?: string | null;
+  isPublic: boolean;
+};
+
+export type UpdateKpiFormValues = {
+  code?: string;
+  name?: string;
+  description?: string | null;
+  category?: "Stratégique" | "Opérationnel" | "Organisationnel" | "Qualité";
+  targetValue?: number;
+  currentValue?: number;
+  unit?: string | null;
+  direction?: "higher" | "lower";
+  frequency?: "Quotidien" | "Hebdomadaire" | "Mensuel" | "Trimestriel" | "Annuel";
+  strategicAxisId?: string | null;
+  directionId?: string | null;
+  isPublic?: boolean;
+};
+
+export type CaptureSnapshotFormValues = {
+  value: number;
+  targetValue?: number;
+  period: string;
+  notes?: string | null;
+};
+
+export type KpiFilterValues = {
+  search?: string;
+  category?: string;
+  strategicAxisId?: string;
+  directionId?: string;
+  isActive?: "true" | "false" | "all";
+  page: number;
+  limit: number;
+};

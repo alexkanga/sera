@@ -2,49 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
+import { updateKpiFormSchema, captureSnapshotFormSchema } from "@/lib/validations";
+import { kpiDetailInclude, kpiInclude } from "@/lib/kpi-utils";
 
-const updateKpiSchema = z.object({
-  code: z.string().optional(),
-  name: z.string().optional(),
-  description: z.string().optional().nullable(),
-  category: z.enum(["Stratégique", "Opérationnel", "Organisationnel", "Qualité"]).optional(),
-  targetValue: z.number().optional(),
-  currentValue: z.number().optional(),
-  unit: z.string().optional().nullable(),
-  direction: z.enum(["higher", "lower"]).optional(),
-  frequency: z.enum(["Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"]).optional(),
-  strategicAxisId: z.string().optional().nullable(),
-  directionId: z.string().optional().nullable(),
-  isPublic: z.boolean().optional(),
-});
-
-const captureSnapshotSchema = z.object({
-  value: z.number({ message: "La valeur est requise" }),
-  targetValue: z.number().optional(),
-  period: z.string().min(1, "La période est requise"),
-  notes: z.string().optional().nullable(),
-});
-
-// Common include for KPI detail
-const kpiDetailInclude = {
-  strategicAxis: {
-    select: { id: true, code: true, name: true },
-  },
-  orgDirection: {
-    select: { id: true, code: true, name: true },
-  },
-  snapshots: {
-    orderBy: { capturedAt: "desc" as const },
-    select: {
-      id: true,
-      value: true,
-      targetValue: true,
-      period: true,
-      capturedAt: true,
-      notes: true,
-    },
-  },
-};
+// Use centralized schemas with route-local aliases
+const updateKpiSchema = updateKpiFormSchema;
+const captureSnapshotSchema = captureSnapshotFormSchema;
 
 // ============================================================
 // GET /api/kpi/[id] — Détail d'une définition KPI avec snapshots
@@ -60,10 +23,9 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess =
-      userHasPermission(currentUser, "kpi:read") ||
-      userHasPermission(currentUser, "pta:read");
-    if (!hasAccess) {
+    const hasKpiRead = userHasPermission(currentUser, "kpi:read");
+    const hasPtaRead = userHasPermission(currentUser, "pta:read");
+    if (!hasKpiRead && !hasPtaRead) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
@@ -79,6 +41,11 @@ export async function GET(
         { error: "KPI non trouvé" },
         { status: 404 }
       );
+    }
+
+    // M8: If user only has pta:read, restrict to public KPIs
+    if (!hasKpiRead && hasPtaRead && !kpi.isPublic) {
+      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
     return NextResponse.json({ data: kpi });
@@ -187,26 +154,7 @@ export async function PUT(
     const updatedKpi = await db.kpiDefinition.update({
       where: { id },
       data: updateData,
-      include: {
-        strategicAxis: {
-          select: { id: true, code: true, name: true },
-        },
-        orgDirection: {
-          select: { id: true, code: true, name: true },
-        },
-        snapshots: {
-          orderBy: { capturedAt: "desc" as const },
-          take: 1,
-          select: {
-            id: true,
-            value: true,
-            targetValue: true,
-            period: true,
-            capturedAt: true,
-            notes: true,
-          },
-        },
-      },
+      include: kpiInclude,
     });
 
     // Audit log with oldValue/newValue comparison

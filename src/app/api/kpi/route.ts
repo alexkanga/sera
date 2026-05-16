@@ -2,59 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 import { z } from "zod";
+import { createKpiFormSchema, kpiFilterSchema } from "@/lib/validations";
+import { kpiInclude } from "@/lib/kpi-utils";
+
+// Use centralized schema with route-local alias
+const createKpiSchema = createKpiFormSchema;
 
 // ============================================================
 // GET /api/kpi — Liste des définitions KPI avec filtres
 // ============================================================
-
-const filterSchema = z.object({
-  search: z.string().optional(),
-  category: z.string().optional(),
-  strategicAxisId: z.string().optional(),
-  directionId: z.string().optional(),
-  isActive: z.enum(["true", "false", "all"]).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-const createKpiSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  description: z.string().optional().nullable(),
-  category: z.enum(["Stratégique", "Opérationnel", "Organisationnel", "Qualité"], {
-    message: "Catégorie invalide. Utilisez Stratégique, Opérationnel, Organisationnel ou Qualité",
-  }),
-  targetValue: z.number().default(0),
-  currentValue: z.number().default(0),
-  unit: z.string().optional().nullable(),
-  direction: z.enum(["higher", "lower"]).default("higher"),
-  frequency: z.enum(["Quotidien", "Hebdomadaire", "Mensuel", "Trimestriel", "Annuel"]).default("Mensuel"),
-  strategicAxisId: z.string().optional().nullable(),
-  directionId: z.string().optional().nullable(),
-  isPublic: z.boolean().default(true),
-});
-
-// Common include for KPI definitions
-const kpiInclude = {
-  strategicAxis: {
-    select: { id: true, code: true, name: true },
-  },
-  orgDirection: {
-    select: { id: true, code: true, name: true },
-  },
-  snapshots: {
-    orderBy: { capturedAt: "desc" as const },
-    take: 1,
-    select: {
-      id: true,
-      value: true,
-      targetValue: true,
-      period: true,
-      capturedAt: true,
-      notes: true,
-    },
-  },
-};
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,16 +19,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    const hasAccess =
-      userHasPermission(currentUser, "kpi:read") ||
-      userHasPermission(currentUser, "pta:read");
-    if (!hasAccess) {
+    const hasKpiRead = userHasPermission(currentUser, "kpi:read");
+    const hasPtaRead = userHasPermission(currentUser, "pta:read");
+    if (!hasKpiRead && !hasPtaRead) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
+    // M8: If user only has pta:read (not kpi:read), only show public KPIs
+    const restrictToPublic = !hasKpiRead && hasPtaRead;
+
     const { searchParams } = new URL(request.url);
 
-    const parseResult = filterSchema.safeParse({
+    const parseResult = kpiFilterSchema.safeParse({
       search: searchParams.get("search") || undefined,
       category: searchParams.get("category") || undefined,
       strategicAxisId: searchParams.get("strategicAxisId") || undefined,
@@ -100,6 +58,11 @@ export async function GET(request: NextRequest) {
       where.deletedAt = { not: null };
     }
     // "all" => no filter
+
+    // M8: Restrict to public KPIs when user only has pta:read
+    if (restrictToPublic) {
+      where.isPublic = true;
+    }
 
     // Search filter
     if (params.search) {

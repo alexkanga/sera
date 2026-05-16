@@ -2036,3 +2036,87 @@ Stage Summary:
 - Bug fix: isMilestone avec endDate null
 - Code quality: mobile detection nettoyée, useMemo redondant supprimé
 - 6 fichiers modifiés, +884/-489 lignes
+
+---
+Task ID: 10-frontend
+Agent: Frontend Agent
+Task: Module 10 Frontend Optimizations
+
+Work Log:
+- C1/C2/C3: Rewrote DashboardData interface to match actual API response structure (nested global, evidence, raci objects; new validationPipelineByDirection field; monthlyProgressTrend instead of monthlyTrend)
+- C1/C2/C3: Updated all dashboard rendering code to use new field paths (dashboard?.global.totalActivities, dashboard?.global.avgProgress, dashboard?.global.validationRate, dashboard?.global.overdueCount, dashboard?.raci.coverage, dashboard?.evidence.verified, dashboard?.global.totalActivitiesLastMonth, dashboard?.monthlyProgressTrend, dashboard?.validationPipelineByDirection)
+- C1/C2/C3: Fixed activityTrend computation to use dashboard.global.totalActivities - (dashboard.global.totalActivitiesLastMonth || 0)
+- C4: Fixed KPI status filter param name from "status" to "isActive" with proper value mapping (active→true, archived→false, all→all)
+- E2: Fixed division by zero in getKpiStatusColor and getKpiProgress by adding check for currentValue===0 when direction==="lower"
+- E3: Fixed KPI trend direction by changing snapshots.slice(-2) to snapshots.slice(0, 2) and reversing diff computation to lastTwo[0].value - lastTwo[1].value (snapshots ordered desc)
+- E4: Fixed "__none__" being sent as real ID in saveCreate/saveEdit by converting "__none__" to null for strategicAxisId and directionId
+- E5: Added numeric validation in saveCreate/saveEdit with proper NaN check and early return with French error toast
+- E6: Removed useless filteredKpis useMemo, replaced with simple const filteredKpis = kpis
+- E7: Removed dead import: Legend from recharts
+- E8: Removed dead import: AlertTriangle from lucide-react
+- m1: Removed local getProgressBg function and imported from @/components/shared/activity-badges
+- m3: Removed empty comment block between "Permission Helper" and "Chart Configs" sections
+- m6: Combined fetchDashboard and fetchKpis into single useEffect
+- m7: Added aria-label="Rafraîchir les données" to refresh button
+- M6: Added auto-refresh polling (60-second interval) for dashboard data
+- M11: Added pagination to KPI list with kpiPage/kpiTotalPages state, page/limit params in fetchKpis, and prev/next pagination controls
+- M11: Added page reset effect when filters change
+- M12: Fixed dashboard-section.tsx subtitle from "Module 1 : Authentification et gestion des rôles" to "Pilotage 360"
+- E1: Added permission handling to dashboard-section.tsx with useSession, checkPermission, canViewDashboard check, and "Accès restreint" friendly message
+- Added ChevronLeft/ChevronRight icons for pagination controls
+- TypeScript type check: no errors in performance-section.tsx or dashboard-section.tsx
+- Lint check: clean ✅
+
+Stage Summary:
+- All 20 optimization items implemented successfully across performance-section.tsx and dashboard-section.tsx
+- DashboardData interface now matches actual /api/kpi/dashboard API response
+- KPI form validation improved with NaN checks and __none__ handling
+- Auto-refresh polling and pagination added for better UX
+- Permission handling added to dashboard-section.tsx
+- No TypeScript or lint errors in modified files
+
+---
+Task ID: 10-backend
+Agent: Backend Agent
+Task: Module 10 Backend Optimizations
+
+Work Log:
+- Created `src/lib/validations.ts` with centralized KPI validation schemas (M1):
+  - `createKpiFormSchema`, `updateKpiFormSchema`, `captureSnapshotFormSchema` (with period regex validation), `kpiFilterSchema`
+  - Named types: `CreateKpiFormValues`, `UpdateKpiFormValues`, `CaptureSnapshotFormValues`, `KpiFilterValues`
+  - Preserved all existing non-KPI schemas from other modules (users, roles, permissions, directions, units, strategic axes, ACBF, activities, RACI, PTA consolide, Gantt)
+  - Added missing `validationStatus` field to `ganttFilterSchema`
+- Updated `src/app/api/kpi/route.ts` (M1 + M8):
+  - Removed inline Zod schemas, replaced with imports from `@/lib/validations`
+  - Removed inline `kpiInclude`, replaced with import from `@/lib/kpi-utils`
+  - Added `createKpiSchema` alias for `createKpiFormSchema`
+  - M8: Added `isPublic` filter — when user only has `pta:read` (not `kpi:read`), only returns KPIs where `isPublic: true`
+- Updated `src/app/api/kpi/[id]/route.ts` (M1):
+  - Removed inline Zod schemas, replaced with imports from `@/lib/validations`
+  - Removed inline `kpiDetailInclude`, replaced with import from `@/lib/kpi-utils`
+  - Added route-local aliases `updateKpiSchema` and `captureSnapshotSchema`
+  - M8: Added `isPublic` check on GET detail — returns 403 for non-public KPIs when user only has `pta:read`
+- Created `src/lib/kpi-utils.ts` (m4):
+  - Shared `kpiInclude` (latest snapshot, take: 1)
+  - Shared `kpiDetailInclude` (all snapshots, no take limit)
+- Added database indexes to `prisma/schema.prisma` (M3):
+  - KpiDefinition: `@@index([deletedAt, isActive])`, `@@index([category])`, `@@index([directionId])`, `@@index([strategicAxisId])`
+  - KpiSnapshot: `@@index([kpiId])`, `@@index([capturedAt])`
+- Optimized dashboard API `src/app/api/kpi/dashboard/route.ts` (C5 + M4):
+  - C5: Added `format=csv` query param support — generates CSV with BOM, Content-Disposition header
+  - C5: CSV includes sections: Global KPIs, By Direction, By Strategic Axis, By Status, By Priority, By ACBF Domain, Validation Pipeline, Validation Pipeline by Direction, Evidence, RACI, KPI Definitions
+  - M4: Replaced `findMany` + JS aggregation for `byStatus`, `byPriority`, `byValidation`, `evidenceByCategory` with Prisma `groupBy`
+  - M4: Kept `findMany` for `byDirection`, `byAxis`, `byDomain` (need relation names)
+  - M4: Added `totalActivitiesLastMonth` to `global` response (C2 fix)
+  - M4: Added `validationPipelineByDirection` pivoted structure (C3 fix) with shape `{ direction, Brouillon, Soumis, Validé, Rejeté }`
+- TypeScript compilation: `npx tsc --noEmit` passes ✅
+- ESLint: `bun run lint` passes ✅
+
+Stage Summary:
+- M1: KPI validation schemas centralized in validations.ts with named type exports
+- M3: Database indexes added for KpiDefinition (4 indexes) and KpiSnapshot (2 indexes)
+- m4: kpiInclude/kpiDetailInclude deduplicated into kpi-utils.ts
+- M8: isPublic access control implemented — pta:read users only see public KPIs
+- C5: CSV export support added to dashboard API with ?format=csv parameter
+- M4: Dashboard API optimized with Prisma groupBy, totalActivitiesLastMonth, validationPipelineByDirection
+- All TypeScript and lint checks pass

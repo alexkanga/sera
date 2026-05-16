@@ -428,6 +428,10 @@ model KpiDefinition {
   orgDirection    Direction?     @relation(fields: [directionId], references: [id], onDelete: SetNull)
   snapshots       KpiSnapshot[]
 
+  @@index([deletedAt, isActive])
+  @@index([category])
+  @@index([directionId])
+  @@index([strategicAxisId])
   @@map("kpi_definitions")
 }
 
@@ -443,6 +447,8 @@ model KpiSnapshot {
   kpi             KpiDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
 
   @@unique([kpiId, period])
+  @@index([kpiId])
+  @@index([capturedAt])
   @@map("kpi_snapshots")
 }
 
