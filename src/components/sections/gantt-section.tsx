@@ -977,7 +977,7 @@ export function GanttSection() {
     const activityStart = new Date(activity.startDate);
     const activityEnd = activity.endDate ? new Date(activity.endDate) : addDays(activityStart, 1);
     // O4: Fix isMilestone when endDate is null
-    const isMilestone = !activity.endDate || (activity.startDate && activity.endDate && format(new Date(activity.startDate), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd"));
+    const isMilestone = !activity.endDate || (!!activity.startDate && !!activity.endDate && format(new Date(activity.startDate), "yyyy-MM-dd") === format(new Date(activity.endDate), "yyyy-MM-dd"));
 
     const totalDays = differenceInDays(timelineRange.end, timelineStart);
     if (totalDays <= 0) return null;
@@ -991,7 +991,7 @@ export function GanttSection() {
     return {
       left: Math.max(0, left),
       width,
-      isMilestone,
+      isMilestone: isMilestone as boolean,
     };
   }, [timelineRange, totalWidth]);
 
