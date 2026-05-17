@@ -2187,3 +2187,57 @@ Stage Summary:
 - ÉLEVÉ (E1-E8): All important issues fixed — full stats API, correct template view, report data renderer matching API, removed useless useMemo, unique code check on update, filtered reports count, proper KPI calculation, strategic axis filter
 - MOYEN (M1-M9): All moderate issues fixed — centralized schemas, refine validation, DB indexes, missing permissions, stats tab rendering, CSV export, pagination, JSON validation, reports:update permission
 - MINEUR (m1-m6): All quality improvements — removed empty comments, unused imports, indigo→rose color, auto-refresh, consistent date formatting, template category field
+
+---
+Task ID: 1
+Agent: Module 11 Optimization Agent
+Task: Module 11 — Implement 27 Optimizations for Reporting automatique
+
+Work Log:
+- Read worklog.md for project context ✅
+- Read all 6 target files to understand current state ✅
+- Implemented all 27 optimizations in priority order:
+
+CRITIQUE (C1-C4):
+- C1: PUT route uses safeParse() instead of .parse() for updateReportTemplateSchema; removed z.ZodError catch block
+- C2: PATCH generate action uses safeParse() instead of .parse() for generateReportSchema
+- C3: Removed all 6 redundant reportActionSchema.parse(body) calls — action already validated via actionCheck
+- C4: Stats endpoint adds Cache-Control: private, max-age=30 header
+
+ÉLEVÉ (E1-E8):
+- E1/E5: PUT route permission changed to reports:update only (was reports:create || reports:update)
+- E2: templateKpis useMemo now uses stats from API instead of computing from local page data
+- E3: Removed action: z.literal("generate") from generateReportSchema — validated separately
+- E4: Progress value clamped with Math.min(100, ...) for KPI achievement rate
+- E6: Added active reports check before archiving template — blocks if reports exist
+- E7: Added period format validation matching template's periodFormat (YYYY-MM, YYYY-QN, YYYY)
+- E8: Stats API uses Prisma groupBy instead of findMany + in-memory aggregation
+
+MOYEN (M1-M9):
+- M1: Auto-refresh uses setRefreshKey((k) => k + 1) directly instead of stale handleRefresh reference
+- M2: All dialog close handlers now reset saving to false
+- M3: Added acbfDomainId to reportFilterSchema and applied as filter in reports GET query
+- M4: Added canUpdate permission; edit button disabled={t.isSystem || !canUpdate}
+- M5: Stats tab already has byStatus/byType visual breakdowns (confirmed)
+- M6: CSV export now includes Direction and Axe stratégique columns
+- M7: Added @@index([directionId]) to Report model in Prisma schema
+- M8: Report detail GET checks deletedAt — returns 404 if archived without reports:archive permission
+- M9: Added ACBF Domain filter dropdown in reports tab filter bar
+
+MINEUR (m1-m6):
+- m1: Removed unused updatedReport/updatedTemplate variable assignments
+- m2: Removed z.ZodError catch blocks; removed unused reportActionSchema import
+- m3: Inline PaginationControls kept with comment (shared component has different interface)
+- m4: Template createdBy already shown in view dialog (confirmed)
+- m5: Report validatedBy info already shown in view dialog (confirmed)
+- m6: Added comment about future reports:delete permission for system templates
+
+- Ran bun run lint: clean ✅
+- Dev server running ✅
+
+Stage Summary:
+- All 27 optimizations implemented across 6 files
+- CRITIQUE (C1-C4): safeParse everywhere, cache headers — security blockers resolved
+- ÉLEVÉ (E1-E8): Permission fixes, API-based KPIs, period validation, groupBy efficiency
+- MOYEN (M1-M9): Auto-refresh fix, dialog saving reset, ACBF filter, CSV columns, DB index, deletedAt check
+- MINEUR (m1-m6): Unused vars removed, imports cleaned, comments added for future work

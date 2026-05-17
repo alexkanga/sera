@@ -694,13 +694,14 @@ export const reportFilterSchema = z.object({
   status: z.string().optional(),
   directionId: z.string().optional(),
   strategicAxisId: z.string().optional(),
+  acbfDomainId: z.string().optional(),
   period: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+// E3 fix: Remove action field from generateReportSchema — action is validated separately
 export const generateReportSchema = z.object({
-  action: z.literal("generate"),
   period: z.string().min(1, "La période est requise"),
   directionId: z.string().optional().nullable(),
   strategicAxisId: z.string().optional().nullable(),

@@ -5,7 +5,6 @@ import { getIpAndUserAgent } from "@/lib/request-context";
 import {
   updateReportTemplateSchema,
   generateReportSchema,
-  reportActionSchema,
 } from "@/lib/validations";
 import { z } from "zod";
 
@@ -94,6 +93,11 @@ export async function GET(
       },
     });
 
+    // M8 fix: Check for deletedAt on report detail GET
+    if (report?.deletedAt && !userHasPermission(currentUser, "reports:archive")) {
+      return NextResponse.json({ error: "Rapport non trouvé" }, { status: 404 });
+    }
+
     if (report) {
       return NextResponse.json({ data: report, kind: "report" });
     }
@@ -122,10 +126,8 @@ export async function PUT(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // M9 fix: Use reports:update instead of reports:write
-    const hasAccess =
-      userHasPermission(currentUser, "reports:create") ||
-      userHasPermission(currentUser, "reports:update");
+    // E1/E5 fix: Use reports:update primarily for updating templates
+    const hasAccess = userHasPermission(currentUser, "reports:update");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
@@ -150,6 +152,8 @@ export async function PUT(
     }
 
     if (existingTemplate.isSystem) {
+      // m6 note: A dedicated reports:delete permission could be added for future implementation
+      // to differentiate between deleting system templates vs regular templates
       return NextResponse.json(
         { error: "Impossible de modifier un modèle système" },
         { status: 400 }
@@ -157,7 +161,16 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validated = updateReportTemplateSchema.parse(body);
+
+    // C1 fix: Use safeParse instead of .parse()
+    const parseResult = updateReportTemplateSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Données invalides", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+    const validated = parseResult.data;
 
     // E5 fix: Check for duplicate code on update
     if (validated.code !== undefined && validated.code !== existingTemplate.code) {
@@ -223,12 +236,6 @@ export async function PUT(
 
     return NextResponse.json({ data: updatedTemplate });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Données invalides", details: error.issues },
-        { status: 400 }
-      );
-    }
     console.error("Erreur PUT /api/reports/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
@@ -273,7 +280,15 @@ export async function PATCH(
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
 
-      const validated = generateReportSchema.parse(body);
+      // C2 fix: Use safeParse instead of .parse()
+      const genParseResult = generateReportSchema.safeParse(body);
+      if (!genParseResult.success) {
+        return NextResponse.json(
+          { error: "Données invalides", details: genParseResult.error.issues },
+          { status: 400 }
+        );
+      }
+      const validated = genParseResult.data;
 
       // Find the template
       const template = await db.reportTemplate.findUnique({
@@ -288,6 +303,20 @@ export async function PATCH(
       if (template.deletedAt) {
         return NextResponse.json(
           { error: "Impossible de générer un rapport à partir d'un modèle archivé" },
+          { status: 400 }
+        );
+      }
+
+      // E7 fix: Validate period format matches template's periodFormat
+      const periodRegexes: Record<string, RegExp> = {
+        "YYYY-MM": /^\d{4}-(0[1-9]|1[0-2])$/,
+        "YYYY-QN": /^\d{4}-Q[1-4]$/,
+        "YYYY": /^\d{4}$/,
+      };
+      const regex = periodRegexes[template.periodFormat];
+      if (regex && !regex.test(validated.period)) {
+        return NextResponse.json(
+          { error: `La période ne correspond pas au format attendu: ${template.periodFormat}` },
           { status: 400 }
         );
       }
@@ -641,7 +670,6 @@ export async function PATCH(
     // TEMPLATE-ARCHIVE — Soft delete a template
     // ============================================================
     if (action === "template-archive") {
-      reportActionSchema.parse(body);
       // C3 fix: Use reports:archive instead of reports:create
       const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
@@ -660,6 +688,17 @@ export async function PATCH(
       if (existingTemplate.deletedAt) {
         return NextResponse.json(
           { error: "Ce modèle est déjà archivé" },
+          { status: 400 }
+        );
+      }
+
+      // E6 fix: Check for active reports before archiving template
+      const activeReportsCount = await db.report.count({
+        where: { templateId: id, deletedAt: null, isActive: true },
+      });
+      if (activeReportsCount > 0) {
+        return NextResponse.json(
+          { error: `Impossible d'archiver: ${activeReportsCount} rapport(s) actif(s) lié(s) à ce modèle` },
           { status: 400 }
         );
       }
@@ -693,7 +732,6 @@ export async function PATCH(
     // TEMPLATE-RESTORE — Unarchive a template
     // ============================================================
     if (action === "template-restore") {
-      reportActionSchema.parse(body);
       // C3 fix: Use reports:archive instead of reports:create
       const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
@@ -759,7 +797,6 @@ export async function PATCH(
     // VALIDATE — Set status to "Validé" (only from "Généré")
     // ============================================================
     if (action === "validate") {
-      reportActionSchema.parse(body);
       const hasAccess = userHasPermission(currentUser, "reports:validate");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -776,7 +813,8 @@ export async function PATCH(
       }
 
       const now = new Date();
-      const updatedReport = await db.report.update({
+      // m1 fix: Remove unused variable assignment
+      await db.report.update({
         where: { id },
         data: {
           status: "Validé",
@@ -812,7 +850,6 @@ export async function PATCH(
     // REJECT — Set status to "Rejeté" (only from "Généré")
     // ============================================================
     if (action === "reject") {
-      reportActionSchema.parse(body);
       const hasAccess = userHasPermission(currentUser, "reports:validate");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -828,7 +865,8 @@ export async function PATCH(
         );
       }
 
-      const updatedReport = await db.report.update({
+      // m1 fix: Remove unused variable assignment
+      await db.report.update({
         where: { id },
         data: { status: "Rejeté" },
       });
@@ -856,7 +894,6 @@ export async function PATCH(
     // ARCHIVE — Soft delete
     // ============================================================
     if (action === "archive") {
-      reportActionSchema.parse(body);
       // C3 fix: Use reports:archive instead of reports:create
       const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
@@ -870,7 +907,8 @@ export async function PATCH(
         );
       }
 
-      const updatedReport = await db.report.update({
+      // m1 fix: Remove unused variable assignment
+      await db.report.update({
         where: { id },
         data: { deletedAt: new Date(), isActive: false },
       });
@@ -899,7 +937,6 @@ export async function PATCH(
     // RESTORE — Unarchive
     // ============================================================
     if (action === "restore") {
-      reportActionSchema.parse(body);
       // C3 fix: Use reports:archive instead of reports:create
       const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
@@ -913,7 +950,8 @@ export async function PATCH(
         );
       }
 
-      const updatedReport = await db.report.update({
+      // m1 fix: Remove unused variable assignment
+      await db.report.update({
         where: { id },
         data: { deletedAt: null, isActive: true },
       });
@@ -946,12 +984,6 @@ export async function PATCH(
       { status: 400 }
     );
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Données invalides", details: error.issues },
-        { status: 400 }
-      );
-    }
     console.error("Erreur PATCH /api/reports/[id]:", error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }

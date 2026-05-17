@@ -521,6 +521,8 @@ model Report {
   @@index([type])
   @@index([generatedAt])
   @@index([isActive, deletedAt])
+  // M7 fix: Add directionId index for frequent filtering
+  @@index([directionId])
   @@map("reports")
 }
 

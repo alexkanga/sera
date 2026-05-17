@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       status: searchParams.get("status") || undefined,
       directionId: searchParams.get("directionId") || undefined,
       strategicAxisId: searchParams.get("strategicAxisId") || undefined,
+      acbfDomainId: searchParams.get("acbfDomainId") || undefined,
       period: searchParams.get("period") || undefined,
       page: searchParams.get("page") || "1",
       limit: searchParams.get("limit") || "20",
@@ -150,6 +151,11 @@ export async function GET(request: NextRequest) {
 
       if (params.strategicAxisId) {
         where.strategicAxisId = params.strategicAxisId;
+      }
+
+      // M3 fix: Apply acbfDomainId filter to reports query
+      if (params.acbfDomainId) {
+        where.acbfDomainId = params.acbfDomainId;
       }
 
       if (params.period) {

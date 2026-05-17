@@ -506,9 +506,9 @@ function renderReportData(jsonStr: string | null): React.ReactNode {
           Taux de réalisation des KPI
         </h4>
         <div className="flex items-center gap-3">
-          <Progress value={kpis.averageAchievementRate as number} className="h-3 flex-1" />
+          <Progress value={Math.min(100, kpis.averageAchievementRate as number)} className="h-3 flex-1" />
           <span className="text-sm font-medium text-slate-900 dark:text-white w-12 text-right">
-            {Math.round(kpis.averageAchievementRate as number)}%
+            {Math.round(Math.min(100, kpis.averageAchievementRate as number))}%
           </span>
         </div>
       </div>
@@ -540,12 +540,15 @@ function renderReportData(jsonStr: string | null): React.ReactNode {
 // ============================================================
 
 function exportReportsCSV(reports: Report[]) {
+  // M6 fix: Include Direction and Strategic Axis columns
   const headers = [
     "Titre",
     "Modèle",
     "Période",
     "Type",
     "Statut",
+    "Direction",
+    "Axe stratégique",
     "Généré par",
     "Date de génération",
     "Validé par",
@@ -557,6 +560,8 @@ function exportReportsCSV(reports: Report[]) {
     r.period,
     r.type,
     r.status,
+    r.direction?.name || "",
+    r.strategicAxis?.name || "",
     r.generatedBy?.name || "",
     r.generatedAt ? formatDate(r.generatedAt) : "",
     r.validatedBy?.name || "",
@@ -592,6 +597,10 @@ export function ReportsSection() {
     session?.user?.roles ?? [],
     "reports:create"
   );
+  const canUpdate = checkPermission(
+    session?.user?.roles ?? [],
+    "reports:update"
+  );
   const canArchive = checkPermission(
     session?.user?.roles ?? [],
     "reports:archive"
@@ -625,6 +634,7 @@ export function ReportsSection() {
   const [reportPeriodFilter, setReportPeriodFilter] = useState("");
   const [reportDirectionFilter, setReportDirectionFilter] = useState("");
   const [reportAxisFilter, setReportAxisFilter] = useState(""); // E8 fix
+  const [reportAcbfDomainFilter, setReportAcbfDomainFilter] = useState(""); // M9 fix
 
   // Pagination state — M7 fix
   const [templatePage, setTemplatePage] = useState(1);
@@ -797,6 +807,7 @@ export function ReportsSection() {
       if (reportPeriodFilter) params.set("period", reportPeriodFilter);
       if (reportDirectionFilter) params.set("directionId", reportDirectionFilter);
       if (reportAxisFilter) params.set("strategicAxisId", reportAxisFilter); // E8 fix
+      if (reportAcbfDomainFilter) params.set("acbfDomainId", reportAcbfDomainFilter); // M9 fix
       params.set("page", String(reportPage));
       params.set("limit", String(PAGE_SIZE));
 
@@ -824,6 +835,7 @@ export function ReportsSection() {
     reportPeriodFilter,
     reportDirectionFilter,
     reportAxisFilter,
+    reportAcbfDomainFilter,
     reportPage,
   ]);
 
@@ -869,15 +881,15 @@ export function ReportsSection() {
     if (canRead) fetchStats();
   }, [canRead, fetchStats, refreshKey]);
 
-  // m4 fix: Auto-refresh every 60 seconds
+  // m4 fix: Auto-refresh every 60 seconds — M1 fix: use setRefreshKey directly
   useEffect(() => {
-    const interval = setInterval(() => handleRefresh(), 60000);
+    const interval = setInterval(() => setRefreshKey((k) => k + 1), 60000);
     return () => clearInterval(interval);
   }, []);
 
   // Reset page when filters change
   useEffect(() => { setTemplatePage(1); }, [templateSearch, templateTypeFilter, templateCategoryFilter]);
-  useEffect(() => { setReportPage(1); }, [reportSearch, reportStatusFilter, reportTypeFilter, reportPeriodFilter, reportDirectionFilter, reportAxisFilter]);
+  useEffect(() => { setReportPage(1); }, [reportSearch, reportStatusFilter, reportTypeFilter, reportPeriodFilter, reportDirectionFilter, reportAxisFilter, reportAcbfDomainFilter]);
 
   // ============================================================
   // Form Reset Helpers
@@ -1156,27 +1168,14 @@ export function ReportsSection() {
   // ============================================================
 
   const templateKpis = useMemo(() => {
-    const activeTemplates = templates.filter((t) => t.isActive);
-    const allReports = reports;
-    const generated = allReports.filter(
-      (r) => r.status === "Généré" || r.status === "Validé" || r.status === "Brouillon"
-    );
-    const lastGen = allReports
-      .filter((r) => r.generatedAt)
-      .sort(
-        (a, b) =>
-          new Date(b.generatedAt!).getTime() -
-          new Date(a.generatedAt!).getTime()
-      )[0];
-    const pendingVal = allReports.filter((r) => r.status === "Généré").length;
-
+    // E2 fix: Use stats from API instead of computing from local page data
     return {
-      totalTemplates: activeTemplates.length,
-      totalReportsGenerated: generated.length,
-      lastGeneration: lastGen?.generatedAt || null,
-      pendingValidation: pendingVal,
+      totalTemplates: stats?.totalTemplates ?? templates.filter((t) => t.isActive).length,
+      totalReportsGenerated: stats?.totalReports ?? reports.length,
+      lastGeneration: stats?.lastGeneration ?? null,
+      pendingValidation: stats?.pendingValidation ?? 0,
     };
-  }, [templates, reports]);
+  }, [stats, templates, reports]);
 
   // ============================================================
   // Render: Loading
@@ -1244,6 +1243,8 @@ export function ReportsSection() {
 
   // ============================================================
   // Pagination Controls — M7 fix
+  // m3 note: Inline version kept because shared PaginationControls has a different interface
+  // (requires total, itemsPerPage, onPageChange props)
   // ============================================================
 
   function PaginationControls({
@@ -1629,7 +1630,7 @@ export function ReportsSection() {
                                         size="icon"
                                         className="h-8 w-8"
                                         onClick={() => handleEditTemplate(t)}
-                                        disabled={t.isSystem && !canCreate}
+                                        disabled={t.isSystem || !canUpdate}
                                       >
                                         <Pencil className="h-4 w-4" />
                                       </Button>
@@ -1838,6 +1839,27 @@ export function ReportsSection() {
                       {axisOptions.map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {/* M9 fix: ACBF Domain filter */}
+                  <Select
+                    value={reportAcbfDomainFilter}
+                    onValueChange={(v) =>
+                      setReportAcbfDomainFilter(v === "__all__" ? "" : v)
+                    }
+                  >
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Domaine ACBF" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">
+                        Tous les domaines
+                      </SelectItem>
+                      {acbfDomainOptions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2524,7 +2546,7 @@ export function ReportsSection() {
       {/* Create Template Dialog */}
       <Dialog
         open={createTemplateDialogOpen}
-        onOpenChange={setCreateTemplateDialogOpen}
+        onOpenChange={(open) => { if (!open) setSaving(false); setCreateTemplateDialogOpen(open); }}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -2667,7 +2689,7 @@ export function ReportsSection() {
       {/* Edit Template Dialog */}
       <Dialog
         open={editTemplateDialogOpen}
-        onOpenChange={setEditTemplateDialogOpen}
+        onOpenChange={(open) => { if (!open) setSaving(false); setEditTemplateDialogOpen(open); }}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -2969,7 +2991,7 @@ export function ReportsSection() {
       {/* Generate Report Dialog */}
       <Dialog
         open={generateReportDialogOpen}
-        onOpenChange={setGenerateReportDialogOpen}
+        onOpenChange={(open) => { if (!open) setSaving(false); setGenerateReportDialogOpen(open); }}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -3227,7 +3249,7 @@ export function ReportsSection() {
       </Dialog>
 
       {/* Archive/Restore Dialog */}
-      <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+      <AlertDialog open={archiveDialogOpen} onOpenChange={(open) => { if (!open) setSaving(false); setArchiveDialogOpen(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>

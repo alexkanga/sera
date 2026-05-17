@@ -45,16 +45,18 @@ export async function GET(request: NextRequest) {
       // Total generated reports (active)
       db.report.count({ where: reportWhere }),
 
-      // Reports by status
-      db.report.findMany({
+      // Reports by status — E8 fix: Use groupBy for efficiency
+      db.report.groupBy({
+        by: ['status'],
         where: reportWhere,
-        select: { status: true },
+        _count: { status: true },
       }),
 
-      // Reports by type
-      db.report.findMany({
+      // Reports by type — E8 fix: Use groupBy for efficiency
+      db.report.groupBy({
+        by: ['type'],
         where: reportWhere,
-        select: { type: true },
+        _count: { type: true },
       }),
 
       // Last generated report date
@@ -94,25 +96,21 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // Process reports by status
+    // Process reports by status — E8 fix: groupBy result format
+    const reportsByStatus = reportsByStatusRaw.map((r) => ({
+      status: r.status || "Non défini",
+      count: r._count.status,
+    }));
+    // Rebuild statusMap from groupBy results
     const statusMap = new Map<string, number>();
-    for (const r of reportsByStatusRaw) {
-      const status = r.status || "Non défini";
-      statusMap.set(status, (statusMap.get(status) || 0) + 1);
+    for (const r of reportsByStatus) {
+      statusMap.set(r.status, r.count);
     }
-    const reportsByStatus = Array.from(statusMap.entries()).map(
-      ([status, count]) => ({ status, count })
-    );
 
-    // Process reports by type
-    const typeMap = new Map<string, number>();
-    for (const r of reportsByTypeRaw) {
-      const type = r.type || "Non défini";
-      typeMap.set(type, (typeMap.get(type) || 0) + 1);
-    }
-    const reportsByType = Array.from(typeMap.entries()).map(([type, count]) => ({
-      type,
-      count,
+    // Process reports by type — E8 fix: groupBy result format
+    const reportsByType = reportsByTypeRaw.map((r) => ({
+      type: r.type || "Non défini",
+      count: r._count.type,
     }));
 
     // E1 fix: Return full stats matching frontend ReportStats interface
@@ -138,6 +136,8 @@ export async function GET(request: NextRequest) {
           templateName: r.template?.name || "—",
         })),
       },
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
     });
   } catch (error) {
     console.error("Erreur GET /api/reports/stats:", error);
