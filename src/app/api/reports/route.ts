@@ -1,57 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import {
+  reportFilterSchema,
+  createReportTemplateSchema,
+} from "@/lib/validations";
 import { z } from "zod";
 
 // ============================================================
 // GET /api/reports — Liste des modèles de rapports ET rapports générés
 // ============================================================
-
-const filterSchema = z.object({
-  tab: z.enum(["templates", "reports"]).default("templates"),
-  search: z.string().optional(),
-  type: z.string().optional(),
-  category: z.string().optional(),
-  status: z.string().optional(),
-  directionId: z.string().optional(),
-  strategicAxisId: z.string().optional(),
-  period: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-const createTemplateSchema = z.object({
-  code: z.string().min(1, "Le code est requis"),
-  name: z.string().min(1, "Le nom est requis"),
-  description: z.string().optional().nullable(),
-  type: z.enum(
-    [
-      "Mensuel",
-      "Trimestriel",
-      "Annuel",
-      "ACBF",
-      "Par axe",
-      "Par direction",
-      "Personnalisé",
-    ],
-    {
-      message:
-        "Type invalide. Utilisez Mensuel, Trimestriel, Annuel, ACBF, Par axe, Par direction ou Personnalisé",
-    }
-  ),
-  category: z.enum(
-    ["Général", "Stratégique", "Opérationnel", "ACBF", "Finance"],
-    {
-      message:
-        "Catégorie invalide. Utilisez Général, Stratégique, Opérationnel, ACBF ou Finance",
-    }
-  ),
-  periodFormat: z
-    .enum(["YYYY-MM", "YYYY-QN", "YYYY", "custom"])
-    .default("YYYY-MM"),
-  sections: z.string().optional().nullable(), // JSON string
-  filters: z.string().optional().nullable(), // JSON string
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
-    const parseResult = filterSchema.safeParse({
+    const parseResult = reportFilterSchema.safeParse({
       tab: searchParams.get("tab") || undefined,
       search: searchParams.get("search") || undefined,
       type: searchParams.get("type") || undefined,
@@ -122,7 +81,7 @@ export async function GET(request: NextRequest) {
               select: { id: true, name: true, email: true },
             },
             _count: {
-              select: { reports: true },
+              select: { reports: { where: { deletedAt: null } } },
             },
           },
           orderBy: [{ code: "asc" as const }],
@@ -132,7 +91,7 @@ export async function GET(request: NextRequest) {
         db.reportTemplate.count({ where }),
       ]);
 
-      // Enrich with generated reports count (only active reports)
+      // Enrich with generated reports count (only active reports) — E6 fix
       const templatesWithCount = templates.map((t) => ({
         id: t.id,
         code: t.code,
@@ -158,7 +117,7 @@ export async function GET(request: NextRequest) {
           page: params.page,
           limit: params.limit,
           total,
-          totalPages: Math.ceil(total / params.limit),
+          totalPages: Math.max(1, Math.ceil(total / params.limit)),
         },
       });
     } else {
@@ -239,7 +198,7 @@ export async function GET(request: NextRequest) {
           page: params.page,
           limit: params.limit,
           total,
-          totalPages: Math.ceil(total / params.limit),
+          totalPages: Math.max(1, Math.ceil(total / params.limit)),
         },
       });
     }
@@ -266,7 +225,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validated = createTemplateSchema.parse(body);
+
+    // C2 fix: Use safeParse instead of .parse()
+    const parseResult = createReportTemplateSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Données invalides", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+    const validated = parseResult.data;
 
     // Check unique code
     const existingTemplate = await db.reportTemplate.findUnique({
@@ -298,7 +266,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Audit log
+    // C1 fix: Include IP and User-Agent in audit logs
+    const { ip, userAgent } = getIpAndUserAgent(request);
     await db.auditLog.create({
       data: {
         userId: currentUser.id,
@@ -313,6 +282,8 @@ export async function POST(request: NextRequest) {
           periodFormat: template.periodFormat,
         }),
         details: `Création du modèle de rapport ${template.name} (${template.code})`,
+        ipAddress: ip,
+        userAgent: userAgent,
       },
     });
 

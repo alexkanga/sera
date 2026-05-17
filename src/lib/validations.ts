@@ -610,3 +610,112 @@ export type KpiFilterValues = {
   page: number;
   limit: number;
 };
+
+// ─── Report Template schemas (Module 11 — Reporting automatique) ───────────
+
+const validJsonRefine = (fieldLabel: string) =>
+  z.string().optional().nullable().refine(
+    (val) => {
+      if (!val) return true;
+      try {
+        JSON.parse(val);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: `Le champ ${fieldLabel} doit être un JSON valide` }
+  );
+
+export const createReportTemplateSchema = z.object({
+  code: z.string().min(1, "Le code est requis"),
+  name: z.string().min(1, "Le nom est requis"),
+  description: z.string().optional().nullable(),
+  type: z.enum(
+    [
+      "Mensuel",
+      "Trimestriel",
+      "Annuel",
+      "ACBF",
+      "Par axe",
+      "Par direction",
+      "Personnalisé",
+    ],
+    {
+      message:
+        "Type invalide. Utilisez Mensuel, Trimestriel, Annuel, ACBF, Par axe, Par direction ou Personnalisé",
+    }
+  ),
+  category: z.enum(
+    ["Général", "Stratégique", "Opérationnel", "ACBF", "Finance"],
+    {
+      message:
+        "Catégorie invalide. Utilisez Général, Stratégique, Opérationnel, ACBF ou Finance",
+    }
+  ),
+  periodFormat: z
+    .enum(["YYYY-MM", "YYYY-QN", "YYYY", "custom"])
+    .default("YYYY-MM"),
+  sections: validJsonRefine("sections"),
+  filters: validJsonRefine("filtres"),
+});
+
+export const updateReportTemplateSchema = z.object({
+  code: z.string().min(1, "Le code est requis").optional(),
+  name: z.string().min(1, "Le nom est requis").optional(),
+  description: z.string().optional().nullable(),
+  type: z
+    .enum([
+      "Mensuel",
+      "Trimestriel",
+      "Annuel",
+      "ACBF",
+      "Par axe",
+      "Par direction",
+      "Personnalisé",
+    ])
+    .optional(),
+  category: z
+    .enum(["Général", "Stratégique", "Opérationnel", "ACBF", "Finance"])
+    .optional(),
+  periodFormat: z.enum(["YYYY-MM", "YYYY-QN", "YYYY", "custom"]).optional(),
+  sections: validJsonRefine("sections"),
+  filters: validJsonRefine("filtres"),
+}).refine(
+  (data) => Object.values(data).some((v) => v !== undefined),
+  { message: "Au moins un champ doit être modifié" }
+);
+
+export const reportFilterSchema = z.object({
+  tab: z.enum(["templates", "reports"]).default("templates"),
+  search: z.string().optional(),
+  type: z.string().optional(),
+  category: z.string().optional(),
+  status: z.string().optional(),
+  directionId: z.string().optional(),
+  strategicAxisId: z.string().optional(),
+  period: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const generateReportSchema = z.object({
+  action: z.literal("generate"),
+  period: z.string().min(1, "La période est requise"),
+  directionId: z.string().optional().nullable(),
+  strategicAxisId: z.string().optional().nullable(),
+  acbfDomainId: z.string().optional().nullable(),
+});
+
+export const reportActionSchema = z.object({
+  action: z.enum(["validate", "reject", "archive", "restore", "template-archive", "template-restore"], {
+    message:
+      "Action invalide. Utilisez 'validate', 'reject', 'archive', 'restore', 'template-archive' ou 'template-restore'",
+  }),
+});
+
+export type CreateReportTemplateValues = z.infer<typeof createReportTemplateSchema>;
+export type UpdateReportTemplateValues = z.infer<typeof updateReportTemplateSchema>;
+export type ReportFilterValues = z.infer<typeof reportFilterSchema>;
+export type GenerateReportValues = z.infer<typeof generateReportSchema>;
+export type ReportActionValues = z.infer<typeof reportActionSchema>;

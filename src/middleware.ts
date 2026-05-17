@@ -22,6 +22,7 @@ const routePermissions: Record<string, string> = {
   "/api/raci": "raci:read",
   "/api/gantt": "gantt:read",
   "/api/kpi": "kpi:read",
+  "/api/reports/stats": "reports:read",
   "/api/reports": "reports:read",
   "/api/notifications": "notifications:read",
   "/api/imports": "import:execute",

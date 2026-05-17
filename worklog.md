@@ -2120,3 +2120,70 @@ Stage Summary:
 - C5: CSV export support added to dashboard API with ?format=csv parameter
 - M4: Dashboard API optimized with Prisma groupBy, totalActivitiesLastMonth, validationPipelineByDirection
 - All TypeScript and lint checks pass
+
+---
+Task ID: M11-Optimizations
+Agent: Module 11 Optimization Agent
+Task: Implement 27 optimizations for Module 11 (Reporting automatique)
+
+Work Log:
+- Read worklog.md for project context and all existing code patterns ✅
+- Read all 7 target files to understand current implementation ✅
+- Updated src/lib/validations.ts with centralized report schemas (M1, M2, M8):
+  - Added createReportTemplateSchema, updateReportTemplateSchema with .refine() for at-least-one-field
+  - Added reportFilterSchema, generateReportSchema, reportActionSchema
+  - Added validJsonRefine helper for sections/filters JSON validation
+  - Exported named types for each schema
+- Updated prisma/schema.prisma with DB indexes (M3):
+  - Added @@index([type]), @@index([category]), @@index([isActive, deletedAt]) on ReportTemplate
+  - Added @@index([templateId]), @@index([status]), @@index([type]), @@index([generatedAt]), @@index([isActive, deletedAt]) on Report
+- Updated src/app/api/reports/route.ts (C1, C2, E6):
+  - C1: Added getIpAndUserAgent import and ipAddress/userAgent to all audit logs
+  - C2: Changed POST handler from .parse() to safeParse with proper error handling
+  - E6: Changed _count.reports to use filtered where { deletedAt: null }
+  - Used centralized schemas from validations.ts
+  - Added Math.max for pagination safety on totalPages
+- Updated src/app/api/reports/[id]/route.ts (C1, C3, C4, E5, E7, M9):
+  - C1: Added getIpAndUserAgent and ipAddress/userAgent to ALL audit logs (generate, template-archive, template-restore, validate, reject, archive, restore)
+  - C3: Changed all archive/restore permissions from reports:create to reports:archive
+  - C4: Added Zod validation for action body before switch statement
+  - E5: Added duplicate code check on PUT update when code changes
+  - E7: Rewrote KPI average achievement calculation using individual rates instead of flawed aggregate avg/avg
+  - M9: Changed reports:write to reports:update in PUT handler permission check
+  - Used centralized schemas from validations.ts
+- Updated src/app/api/reports/stats/route.ts (E1):
+  - E1: Expanded stats API to return full set matching frontend ReportStats interface
+  - Added: generatedReports, validatedReports, rejectedReports, draftReports, archivedReports
+  - Added: lastGeneration, pendingValidation, recentReports (last 5 with template names)
+  - Added archived reports count query
+  - Added recent reports query with template name join
+- Updated src/components/sections/reports-section.tsx (E2-E4, E8, M5-M7, m1-m6):
+  - E2: Fixed handleViewTemplate to remove ?mode=template-reports query param, use template detail response's reports array
+  - E3: Fixed renderReportData to match API response structure (data.activities.byStatus, data.evidence.total, data.raci.coverage, data.kpis.averageAchievementRate)
+  - E4: Removed useMemo wrappers for filteredTemplates/filteredReports, use arrays directly
+  - E8: Added strategic axis dropdown filter to reports tab
+  - M5: Enhanced stats tab with additional KPI cards (Rejetés, Brouillons, Archivés), proper distribution charts, recent reports timeline
+  - M6: Added CSV export functionality with UTF-8 BOM, French headers, proper escaping
+  - M7: Added proper pagination controls (PaginationControls component, page state, PAGE_SIZE)
+  - m1: Removed empty comment section header
+  - m2: Removed unused imports (AlertCircle, Play, Hash, Filter), added Download, ChevronLeft, ChevronRight
+  - m3: Replaced indigo with rose for "Par direction" in TYPE_COLORS
+  - m4: Added 60-second auto-refresh interval
+  - m5: Used formatDateTime consistently for createdAt/updatedAt display
+  - m6: Added category field to Report interface template type
+  - Added canArchive permission check for archive buttons
+- Updated src/middleware.ts (M4):
+  - Added "/api/reports/stats": "reports:read" route permission
+- Updated prisma/seed.ts (M4):
+  - Added reports:update and reports:archive permissions to Module Reports
+  - Updated ADMIN and DIRECTEUR role permission codes to include new permissions
+- Ran bun run lint: clean ✅
+- Ran TypeScript type check: only pre-existing gantt-section error (not from our changes) ✅
+- Fixed gantt-section.tsx isMilestone type error with !! double negation ✅
+
+Stage Summary:
+- All 27 optimizations implemented across 7 files
+- CRITIQUE (C1-C4): All security blockers fixed — ipAddress in audit logs, safeParse for POST, correct archive permissions, action body validation
+- ÉLEVÉ (E1-E8): All important issues fixed — full stats API, correct template view, report data renderer matching API, removed useless useMemo, unique code check on update, filtered reports count, proper KPI calculation, strategic axis filter
+- MOYEN (M1-M9): All moderate issues fixed — centralized schemas, refine validation, DB indexes, missing permissions, stats tab rendering, CSV export, pagination, JSON validation, reports:update permission
+- MINEUR (m1-m6): All quality improvements — removed empty comments, unused imports, indigo→rose color, auto-refresh, consistent date formatting, template category field

@@ -7,7 +7,6 @@ import {
   FileText,
   RefreshCw,
   Loader2,
-  AlertCircle,
   Search,
   Eye,
   Plus,
@@ -18,14 +17,14 @@ import {
   ShieldCheck,
   Clock,
   BarChart3,
-  Play,
   CheckCircle2,
   XCircle,
   LayoutTemplate,
   TrendingUp,
   Calendar,
-  Hash,
-  Filter,
+  Download,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -140,7 +139,8 @@ interface Report {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  template?: { id: string; code: string; name: string; type: string };
+  // m6 fix: template field should include category
+  template?: { id: string; code: string; name: string; type: string; category: string };
   generatedBy?: { name: string; email: string } | null;
   validatedBy?: { name: string; email: string } | null;
   direction?: { id: string; code: string; name: string } | null;
@@ -213,6 +213,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
     "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
 };
 
+// m3 fix: Replace indigo with rose for "Par direction"
 const TYPE_COLORS: Record<string, string> = {
   Mensuel: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400",
   Trimestriel:
@@ -223,16 +224,13 @@ const TYPE_COLORS: Record<string, string> = {
   "Par axe":
     "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400",
   "Par direction":
-    "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400",
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400",
   Personnalisé:
     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
 // ============================================================
-// Permission Helper
-// ============================================================
-// ============================================================
-// Date formatting
+// Date formatting — m5 fix: consistent formatting
 // ============================================================
 
 function formatDate(iso: string | null | undefined): string {
@@ -264,7 +262,7 @@ function formatDateTime(iso: string | null | undefined): string {
 }
 
 // ============================================================
-// Report Data Renderer
+// Report Data Renderer — E3 fix: match API response structure
 // ============================================================
 
 function renderReportData(jsonStr: string | null): React.ReactNode {
@@ -289,234 +287,229 @@ function renderReportData(jsonStr: string | null): React.ReactNode {
 
   const sections: React.ReactNode[] = [];
 
-  // Summary statistics
-  const summaryKeys = [
-    "totalActivities",
-    "activeActivities",
-    "avgProgress",
-    "overdueCount",
-    "startingThisMonth",
-    "highRiskCount",
-    "totalEvidence",
-    "verifiedEvidence",
-  ];
-  const hasSummary = summaryKeys.some((k) => k in data);
-  if (hasSummary) {
-    sections.push(
-      <div key="summary" className="space-y-3">
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-emerald-600" />
-          Statistiques résumées
-        </h4>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {summaryKeys
-            .filter((k) => k in data)
-            .map((k) => (
+  // Activities section — E3 fix: access data.activities sub-object
+  const activities = data.activities as Record<string, unknown> | undefined;
+  if (activities) {
+    const summaryItems: Array<{ label: string; value: string | number }> = [];
+    if ("total" in activities) summaryItems.push({ label: "Total activités", value: activities.total as number });
+    if ("averageProgress" in activities) summaryItems.push({ label: "Avancement moyen", value: `${Math.round(activities.averageProgress as number)}%` });
+    if ("overdueCount" in activities) summaryItems.push({ label: "En retard", value: activities.overdueCount as number });
+
+    if (summaryItems.length > 0) {
+      sections.push(
+        <div key="summary" className="space-y-3">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+            Statistiques résumées
+          </h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {summaryItems.map((item) => (
               <div
-                key={k}
+                key={item.label}
                 className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3"
               >
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  {k === "totalActivities"
-                    ? "Total activités"
-                    : k === "activeActivities"
-                    ? "Actives"
-                    : k === "avgProgress"
-                    ? "Avancement moyen"
-                    : k === "overdueCount"
-                    ? "En retard"
-                    : k === "startingThisMonth"
-                    ? "Début ce mois"
-                    : k === "highRiskCount"
-                    ? "Risques élevés"
-                    : k === "totalEvidence"
-                    ? "Total preuves"
-                    : k === "verifiedEvidence"
-                    ? "Preuves vérifiées"
-                    : k}
+                  {item.label}
                 </p>
                 <p className="text-lg font-bold text-slate-900 dark:text-white mt-1">
-                  {k === "avgProgress"
-                    ? `${Math.round(Number(data[k]))}%`
-                    : String(data[k])}
+                  {item.value}
                 </p>
               </div>
             ))}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Breakdown by status
-  const byStatus = data.byStatus as
-    | Array<{ status: string; count: number }> | undefined;
-  if (byStatus && Array.isArray(byStatus) && byStatus.length > 0) {
-    const maxCount = Math.max(...byStatus.map((s) => s.count), 1);
-    sections.push(
-      <div key="byStatus" className="space-y-3">
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-emerald-600" />
-          Répartition par statut
-        </h4>
-        <div className="space-y-2">
-          {byStatus.map((s) => (
-            <div key={s.status} className="flex items-center gap-3">
-              <span className="text-xs w-28 text-muted-foreground truncate">
-                {s.status}
-              </span>
-              <div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all"
-                  style={{
-                    width: `${Math.round((s.count / maxCount) * 100)}%`,
-                  }}
-                />
-              </div>
-              <span className="text-xs font-medium text-slate-900 dark:text-white w-8 text-right">
-                {s.count}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Breakdown by direction
-  const byDirection = data.byDirection as
-    | Array<{ name: string; count: number; avgProgress: number }> | undefined;
-  if (byDirection && Array.isArray(byDirection) && byDirection.length > 0) {
-    sections.push(
-      <div key="byDirection" className="space-y-3">
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-          Répartition par direction
-        </h4>
-        <div className="space-y-2">
-          {byDirection.map((d) => (
-            <div
-              key={d.name}
-              className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-lg p-2"
-            >
-              <span className="text-xs w-32 text-muted-foreground truncate">
-                {d.name}
-              </span>
-              <div className="flex-1 flex items-center gap-2">
-                <Progress value={d.avgProgress} className="h-2 flex-1" />
-                <span className="text-[10px] text-muted-foreground w-10 text-right">
-                  {Math.round(d.avgProgress)}%
+    // Breakdown by status — E3 fix: access activities.byStatus
+    const byStatus = activities.byStatus as
+      | Array<{ status: string; count: number }> | undefined;
+    if (byStatus && Array.isArray(byStatus) && byStatus.length > 0) {
+      const maxCount = Math.max(...byStatus.map((s) => s.count), 1);
+      sections.push(
+        <div key="byStatus" className="space-y-3">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-emerald-600" />
+            Répartition par statut
+          </h4>
+          <div className="space-y-2">
+            {byStatus.map((s) => (
+              <div key={s.status} className="flex items-center gap-3">
+                <span className="text-xs w-28 text-muted-foreground truncate">
+                  {s.status}
+                </span>
+                <div className="flex-1 h-5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{
+                      width: `${Math.round((s.count / maxCount) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-slate-900 dark:text-white w-8 text-right">
+                  {s.count}
                 </span>
               </div>
-              <Badge
-                variant="secondary"
-                className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-              >
-                {d.count}
-              </Badge>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Breakdown by strategic axis
-  const byAxis = data.byStrategicAxis as
-    | Array<{ name: string; count: number; avgProgress: number }> | undefined;
-  if (byAxis && Array.isArray(byAxis) && byAxis.length > 0) {
-    sections.push(
-      <div key="byAxis" className="space-y-3">
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-          Répartition par axe stratégique
-        </h4>
-        <div className="space-y-2">
-          {byAxis.map((a) => (
-            <div
-              key={a.name}
-              className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-lg p-2"
-            >
-              <span className="text-xs w-32 text-muted-foreground truncate">
-                {a.name}
-              </span>
-              <div className="flex-1 flex items-center gap-2">
-                <Progress value={a.avgProgress} className="h-2 flex-1" />
-                <span className="text-[10px] text-muted-foreground w-10 text-right">
-                  {Math.round(a.avgProgress)}%
+    // Breakdown by direction — E3 fix: access activities.byDirection
+    const byDirection = activities.byDirection as
+      | Array<{ name: string; code: string; count: number }> | undefined;
+    if (byDirection && Array.isArray(byDirection) && byDirection.length > 0) {
+      sections.push(
+        <div key="byDirection" className="space-y-3">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Répartition par direction
+          </h4>
+          <div className="space-y-2">
+            {byDirection.map((d) => (
+              <div
+                key={d.code}
+                className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-lg p-2"
+              >
+                <span className="text-xs w-32 text-muted-foreground truncate">
+                  {d.name}
                 </span>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                >
+                  {d.count}
+                </Badge>
               </div>
-              <Badge
-                variant="secondary"
-                className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-              >
-                {a.count}
-              </Badge>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    // Breakdown by axis — E3 fix: access activities.byAxis (not byStrategicAxis)
+    const byAxis = activities.byAxis as
+      | Array<{ name: string; code: string; count: number }> | undefined;
+    if (byAxis && Array.isArray(byAxis) && byAxis.length > 0) {
+      sections.push(
+        <div key="byAxis" className="space-y-3">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Répartition par axe stratégique
+          </h4>
+          <div className="space-y-2">
+            {byAxis.map((a) => (
+              <div
+                key={a.code}
+                className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-lg p-2"
+              >
+                <span className="text-xs w-32 text-muted-foreground truncate">
+                  {a.name}
+                </span>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                >
+                  {a.count}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
   }
 
-  // Evidence & RACI stats
-  const evidenceKeys = [
-    "totalEvidence",
-    "verifiedEvidence",
-    "evidenceByCategory",
-  ];
-  const hasEvidence = evidenceKeys.some((k) => k in data);
-  if (hasEvidence) {
+  // Evidence section — E3 fix: access data.evidence sub-object
+  const evidence = data.evidence as Record<string, unknown> | undefined;
+  if (evidence) {
     sections.push(
       <div key="evidence" className="space-y-3">
         <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
           Preuves &amp; RACI
         </h4>
-        <div className="grid grid-cols-2 gap-3">
-          {evidenceKeys
-            .filter((k) => k in data)
-            .map((k) => (
-              <div
-                key={k}
-                className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3"
-              >
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {k === "totalEvidence"
-                    ? "Total preuves"
-                    : k === "verifiedEvidence"
-                    ? "Vérifiées"
-                    : "Par catégorie"}
-                </p>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
-                  {typeof data[k] === "object"
-                    ? JSON.stringify(data[k], null, 2)
-                    : String(data[k])}
-                </p>
-              </div>
-            ))}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {("total" in evidence) && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Total preuves
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
+                {String(evidence.total)}
+              </p>
+            </div>
+          )}
+          {("verified" in evidence) && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Vérifiées
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
+                {String(evidence.verified)}
+              </p>
+            </div>
+          )}
+          {("verificationRate" in evidence) && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Taux vérification
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
+                {String(evidence.verificationRate)}%
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // KPI achievement rates
-  const kpiData = data.kpiAchievement as
-    | Array<{ name: string; rate: number }> | undefined;
-  if (kpiData && Array.isArray(kpiData) && kpiData.length > 0) {
+  // RACI section — E3 fix: access data.raci sub-object
+  const raci = data.raci as Record<string, unknown> | undefined;
+  if (raci) {
     sections.push(
-      <div key="kpi" className="space-y-3">
+      <div key="raci" className="space-y-3">
+        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Matrice RACI
+        </h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {("totalRaciEntries" in raci) && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Entrées RACI
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
+                {String(raci.totalRaciEntries)}
+              </p>
+            </div>
+          )}
+          {("coverage" in raci) && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                Couverture
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
+                {String(raci.coverage)}%
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // KPI section — E3 fix: access data.kpis sub-object
+  const kpis = data.kpis as Record<string, unknown> | undefined;
+  if (kpis && "averageAchievementRate" in kpis) {
+    sections.push(
+      <div key="kpis" className="space-y-3">
         <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
           Taux de réalisation des KPI
         </h4>
-        <div className="space-y-2">
-          {kpiData.map((k) => (
-            <div key={k.name} className="flex items-center gap-3">
-              <span className="text-xs w-32 text-muted-foreground truncate">
-                {k.name}
-              </span>
-              <Progress value={k.rate} className="h-2 flex-1" />
-              <span className="text-xs font-medium text-slate-900 dark:text-white w-10 text-right">
-                {Math.round(k.rate)}%
-              </span>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <Progress value={kpis.averageAchievementRate as number} className="h-3 flex-1" />
+          <span className="text-sm font-medium text-slate-900 dark:text-white w-12 text-right">
+            {Math.round(kpis.averageAchievementRate as number)}%
+          </span>
         </div>
       </div>
     );
@@ -543,6 +536,52 @@ function renderReportData(jsonStr: string | null): React.ReactNode {
 }
 
 // ============================================================
+// CSV Export — M6
+// ============================================================
+
+function exportReportsCSV(reports: Report[]) {
+  const headers = [
+    "Titre",
+    "Modèle",
+    "Période",
+    "Type",
+    "Statut",
+    "Généré par",
+    "Date de génération",
+    "Validé par",
+    "Date de validation",
+  ];
+  const rows = reports.map((r) => [
+    r.title,
+    r.template?.name || "",
+    r.period,
+    r.type,
+    r.status,
+    r.generatedBy?.name || "",
+    r.generatedAt ? formatDate(r.generatedAt) : "",
+    r.validatedBy?.name || "",
+    r.validatedAt ? formatDate(r.validatedAt) : "",
+  ]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map((row) =>
+      row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+    ),
+  ].join("\n");
+
+  const blob = new Blob(["\uFEFF" + csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rapports_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
 // Main Component
 // ============================================================
 
@@ -552,6 +591,10 @@ export function ReportsSection() {
   const canCreate = checkPermission(
     session?.user?.roles ?? [],
     "reports:create"
+  );
+  const canArchive = checkPermission(
+    session?.user?.roles ?? [],
+    "reports:archive"
   );
   const canValidate = checkPermission(
     session?.user?.roles ?? [],
@@ -581,6 +624,14 @@ export function ReportsSection() {
   const [reportTypeFilter, setReportTypeFilter] = useState("");
   const [reportPeriodFilter, setReportPeriodFilter] = useState("");
   const [reportDirectionFilter, setReportDirectionFilter] = useState("");
+  const [reportAxisFilter, setReportAxisFilter] = useState(""); // E8 fix
+
+  // Pagination state — M7 fix
+  const [templatePage, setTemplatePage] = useState(1);
+  const [templateTotalPages, setTemplateTotalPages] = useState(1);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportTotalPages, setReportTotalPages] = useState(1);
+  const PAGE_SIZE = 20;
 
   // Stats state
   const [stats, setStats] = useState<ReportStats | null>(null);
@@ -634,7 +685,14 @@ export function ReportsSection() {
   const [genAcbfDomainId, setGenAcbfDomainId] = useState("");
 
   // View template: related reports
-  const [templateReports, setTemplateReports] = useState<Report[]>([]);
+  const [templateReports, setTemplateReports] = useState<Array<{
+    id: string;
+    title: string;
+    period: string;
+    status: string;
+    generatedAt: string | null;
+    generatedBy: { id: string; name: string } | null;
+  }>>([]);
   const [templateReportsLoading, setTemplateReportsLoading] = useState(false);
 
   // ============================================================
@@ -687,7 +745,7 @@ export function ReportsSection() {
   }, []);
 
   // ============================================================
-  // Fetch Templates
+  // Fetch Templates — M7 fix: proper pagination
   // ============================================================
 
   const fetchTemplates = useCallback(async () => {
@@ -700,7 +758,8 @@ export function ReportsSection() {
       if (templateTypeFilter) params.set("type", templateTypeFilter);
       if (templateCategoryFilter)
         params.set("category", templateCategoryFilter);
-      params.set("limit", "100");
+      params.set("page", String(templatePage));
+      params.set("limit", String(PAGE_SIZE));
 
       const res = await fetch(`/api/reports?${params.toString()}`);
       if (!res.ok) {
@@ -711,6 +770,7 @@ export function ReportsSection() {
       }
       const data = await res.json();
       setTemplates(data.data || []);
+      setTemplateTotalPages(data.pagination?.totalPages || 1);
     } catch (err) {
       setTemplatesError(
         err instanceof Error ? err.message : "Erreur inconnue"
@@ -718,10 +778,10 @@ export function ReportsSection() {
     } finally {
       setTemplatesLoading(false);
     }
-  }, [templateSearch, templateTypeFilter, templateCategoryFilter]);
+  }, [templateSearch, templateTypeFilter, templateCategoryFilter, templatePage]);
 
   // ============================================================
-  // Fetch Reports
+  // Fetch Reports — M7 fix: proper pagination + E8 fix: strategicAxis filter
   // ============================================================
 
   const fetchReports = useCallback(async () => {
@@ -736,7 +796,9 @@ export function ReportsSection() {
       if (reportTypeFilter) params.set("type", reportTypeFilter);
       if (reportPeriodFilter) params.set("period", reportPeriodFilter);
       if (reportDirectionFilter) params.set("directionId", reportDirectionFilter);
-      params.set("limit", "100");
+      if (reportAxisFilter) params.set("strategicAxisId", reportAxisFilter); // E8 fix
+      params.set("page", String(reportPage));
+      params.set("limit", String(PAGE_SIZE));
 
       const res = await fetch(`/api/reports?${params.toString()}`);
       if (!res.ok) {
@@ -747,6 +809,7 @@ export function ReportsSection() {
       }
       const data = await res.json();
       setReports(data.data || []);
+      setReportTotalPages(data.pagination?.totalPages || 1);
     } catch (err) {
       setReportsError(
         err instanceof Error ? err.message : "Erreur inconnue"
@@ -760,6 +823,8 @@ export function ReportsSection() {
     reportTypeFilter,
     reportPeriodFilter,
     reportDirectionFilter,
+    reportAxisFilter,
+    reportPage,
   ]);
 
   // ============================================================
@@ -803,6 +868,16 @@ export function ReportsSection() {
   useEffect(() => {
     if (canRead) fetchStats();
   }, [canRead, fetchStats, refreshKey]);
+
+  // m4 fix: Auto-refresh every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => handleRefresh(), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Reset page when filters change
+  useEffect(() => { setTemplatePage(1); }, [templateSearch, templateTypeFilter, templateCategoryFilter]);
+  useEffect(() => { setReportPage(1); }, [reportSearch, reportStatusFilter, reportTypeFilter, reportPeriodFilter, reportDirectionFilter, reportAxisFilter]);
 
   // ============================================================
   // Form Reset Helpers
@@ -856,15 +931,20 @@ export function ReportsSection() {
     setEditTemplateDialogOpen(true);
   }
 
+  // E2 fix: Remove ?mode=template-reports query param — use template detail response's reports array
   async function handleViewTemplate(t: ReportTemplate) {
     setSelectedTemplate(t);
     setViewTemplateDialogOpen(true);
     setTemplateReportsLoading(true);
     try {
-      const res = await fetch(`/api/reports/${t.id}?mode=template-reports`);
+      const res = await fetch(`/api/reports/${t.id}`);
       if (res.ok) {
-        const data = await res.json();
-        setTemplateReports(data.data || []);
+        const result = await res.json();
+        if (result.kind === "template" && result.data?.reports) {
+          setTemplateReports(result.data.reports);
+        } else {
+          setTemplateReports([]);
+        }
       } else {
         setTemplateReports([]);
       }
@@ -1072,18 +1152,9 @@ export function ReportsSection() {
   }
 
   // ============================================================
-  // Filtered data
+  // KPI data
   // ============================================================
 
-  const filteredTemplates = useMemo(() => {
-    return templates;
-  }, [templates]);
-
-  const filteredReports = useMemo(() => {
-    return reports;
-  }, [reports]);
-
-  // Template KPI cards data
   const templateKpis = useMemo(() => {
     const activeTemplates = templates.filter((t) => t.isActive);
     const allReports = reports;
@@ -1172,6 +1243,45 @@ export function ReportsSection() {
   }
 
   // ============================================================
+  // Pagination Controls — M7 fix
+  // ============================================================
+
+  function PaginationControls({
+    page,
+    totalPages,
+    setPage,
+  }: {
+    page: number;
+    totalPages: number;
+    setPage: (p: number) => void;
+  }) {
+    if (totalPages <= 1) return null;
+    return (
+      <div className="flex items-center justify-center gap-2 mt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Page {page} / {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPage(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  // ============================================================
   // Render: Main
   // ============================================================
 
@@ -1188,6 +1298,22 @@ export function ReportsSection() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* M6: CSV Export */}
+          {mainTab === "reports" && reports.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportReportsCSV(reports)}
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  CSV
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Exporter en CSV</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" size="sm" onClick={handleRefresh}>
@@ -1366,7 +1492,7 @@ export function ReportsSection() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                  <AlertCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
+                  <XCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Erreur de chargement
@@ -1385,7 +1511,7 @@ export function ReportsSection() {
                 </Button>
               </CardContent>
             </Card>
-          ) : filteredTemplates.length === 0 ? (
+          ) : templates.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
@@ -1436,7 +1562,7 @@ export function ReportsSection() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredTemplates.map((t) => (
+                          {templates.map((t) => (
                             <tr
                               key={t.id}
                               className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
@@ -1521,7 +1647,7 @@ export function ReportsSection() {
                                             handleGenerateReport(t)
                                           }
                                         >
-                                          <Play className="h-4 w-4" />
+                                          <BarChart3 className="h-4 w-4" />
                                         </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
@@ -1529,7 +1655,7 @@ export function ReportsSection() {
                                       </TooltipContent>
                                     </Tooltip>
                                   )}
-                                  {!t.isSystem && (
+                                  {!t.isSystem && canArchive && (
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <Button
@@ -1570,7 +1696,7 @@ export function ReportsSection() {
 
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3">
-                {filteredTemplates.map((t) => (
+                {templates.map((t) => (
                   <Card key={t.id}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
@@ -1618,7 +1744,7 @@ export function ReportsSection() {
                               className="h-8 w-8 text-emerald-600"
                               onClick={() => handleGenerateReport(t)}
                             >
-                              <Play className="h-4 w-4" />
+                              <BarChart3 className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
@@ -1627,6 +1753,8 @@ export function ReportsSection() {
                   </Card>
                 ))}
               </div>
+
+              <PaginationControls page={templatePage} totalPages={templateTotalPages} setPage={setTemplatePage} />
             </>
           )}
         </TabsContent>
@@ -1693,6 +1821,27 @@ export function ReportsSection() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* E8 fix: Strategic axis filter */}
+                  <Select
+                    value={reportAxisFilter}
+                    onValueChange={(v) =>
+                      setReportAxisFilter(v === "__all__" ? "" : v)
+                    }
+                  >
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Axe stratégique" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">
+                        Tous les axes
+                      </SelectItem>
+                      {axisOptions.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {/* Status Tabs */}
                 <div className="flex flex-wrap gap-2">
@@ -1721,7 +1870,7 @@ export function ReportsSection() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                  <AlertCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
+                  <XCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Erreur de chargement
@@ -1740,7 +1889,7 @@ export function ReportsSection() {
                 </Button>
               </CardContent>
             </Card>
-          ) : filteredReports.length === 0 ? (
+          ) : reports.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
@@ -1791,7 +1940,7 @@ export function ReportsSection() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredReports.map((r) => (
+                          {reports.map((r) => (
                             <tr
                               key={r.id}
                               className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
@@ -1832,7 +1981,7 @@ export function ReportsSection() {
                                 {r.generatedBy?.name || "—"}
                               </td>
                               <td className="p-3 text-xs text-muted-foreground">
-                                {formatDate(r.generatedAt)}
+                                {formatDateTime(r.generatedAt)}
                               </td>
                               <td className="p-3">
                                 <div className="flex items-center justify-end gap-1">
@@ -1891,32 +2040,34 @@ export function ReportsSection() {
                                       </Tooltip>
                                     </>
                                   )}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() =>
-                                          handleArchive(
-                                            r.id,
-                                            r.title,
-                                            r.isActive,
-                                            "report"
-                                          )
-                                        }
-                                      >
-                                        {r.isActive ? (
-                                          <Archive className="h-4 w-4" />
-                                        ) : (
-                                          <ArchiveRestore className="h-4 w-4" />
-                                        )}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {r.isActive ? "Archiver" : "Restaurer"}
-                                    </TooltipContent>
-                                  </Tooltip>
+                                  {canArchive && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() =>
+                                            handleArchive(
+                                              r.id,
+                                              r.title,
+                                              r.isActive,
+                                              "report"
+                                            )
+                                          }
+                                        >
+                                          {r.isActive ? (
+                                            <Archive className="h-4 w-4" />
+                                          ) : (
+                                            <ArchiveRestore className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {r.isActive ? "Archiver" : "Restaurer"}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1930,7 +2081,7 @@ export function ReportsSection() {
 
               {/* Mobile Cards */}
               <div className="lg:hidden space-y-3">
-                {filteredReports.map((r) => (
+                {reports.map((r) => (
                   <Card key={r.id}>
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
@@ -1986,25 +2137,27 @@ export function ReportsSection() {
                           Par {r.generatedBy?.name || "—"}
                         </span>
                         <span>•</span>
-                        <span>{formatDate(r.generatedAt)}</span>
+                        <span>{formatDateTime(r.generatedAt)}</span>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
+
+              <PaginationControls page={reportPage} totalPages={reportTotalPages} setPage={setReportPage} />
             </>
           )}
         </TabsContent>
 
         {/* ============================================================ */}
-        {/* TAB 3: STATISTIQUES */}
+        {/* TAB 3: STATISTIQUES — M5 fix: properly rendered */}
         {/* ============================================================ */}
         <TabsContent value="stats" className="space-y-6 mt-6">
           {statsError ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                  <AlertCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
+                  <XCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Erreur de chargement
@@ -2116,6 +2269,52 @@ export function ReportsSection() {
                 </Card>
               </div>
 
+              {/* Additional KPI Row — M5 fix */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Rejetés
+                    </p>
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+                      {statsLoading ? (
+                        <Skeleton className="h-7 w-10 inline-block" />
+                      ) : (
+                        stats?.rejectedReports ?? 0
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Brouillons
+                    </p>
+                    <p className="text-2xl font-bold text-slate-600 dark:text-slate-400 mt-1">
+                      {statsLoading ? (
+                        <Skeleton className="h-7 w-10 inline-block" />
+                      ) : (
+                        stats?.draftReports ?? 0
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Archivés
+                    </p>
+                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+                      {statsLoading ? (
+                        <Skeleton className="h-7 w-10 inline-block" />
+                      ) : (
+                        stats?.archivedReports ?? 0
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
               {/* Distribution Charts */}
               <div className="grid gap-4 lg:grid-cols-2">
                 {/* Distribution by status */}
@@ -2191,7 +2390,7 @@ export function ReportsSection() {
                 <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
-                      <Filter className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <CardTitle className="text-base">
                         Distribution par type
                       </CardTitle>
@@ -2708,15 +2907,16 @@ export function ReportsSection() {
                     <Label className="text-xs text-muted-foreground">
                       Créé le
                     </Label>
+                    {/* m5 fix: consistent date formatting */}
                     <p className="text-sm text-slate-900 dark:text-white mt-1">
-                      {formatDate(selectedTemplate.createdAt)}
+                      {formatDateTime(selectedTemplate.createdAt)}
                     </p>
                   </div>
                 </div>
 
                 <Separator />
 
-                {/* Related Reports */}
+                {/* Related Reports — E2 fix: data from template detail */}
                 <div>
                   <Label className="text-xs text-muted-foreground">
                     Rapports générés ({templateReports.length})
@@ -2732,43 +2932,37 @@ export function ReportsSection() {
                       Aucun rapport généré à partir de ce modèle
                     </p>
                   ) : (
-                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-                      {templateReports.map((r) => (
-                        <div
-                          key={r.id}
-                          className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 rounded-lg p-2"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                              {r.title}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {r.period} • {formatDate(r.generatedAt)}
-                            </p>
-                          </div>
-                          <Badge
-                            className={`text-[10px] border-0 ml-2 ${
-                              STATUS_BADGE_COLORS[r.status] || ""
-                            }`}
+                    <ScrollArea className="max-h-60 mt-2">
+                      <div className="space-y-2">
+                        {templateReports.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg"
                           >
-                            {r.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-slate-900 dark:text-white truncate">
+                                {r.title}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {r.period} • {formatDateTime(r.generatedAt)}
+                              </p>
+                            </div>
+                            <Badge
+                              className={`text-[10px] border-0 ml-2 ${
+                                STATUS_BADGE_COLORS[r.status] || ""
+                              }`}
+                            >
+                              {r.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
                 </div>
               </div>
             </ScrollArea>
           )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setViewTemplateDialogOpen(false)}
-            >
-              Fermer
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2777,16 +2971,17 @@ export function ReportsSection() {
         open={generateReportDialogOpen}
         onOpenChange={setGenerateReportDialogOpen}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5 text-emerald-600" />
+              <BarChart3 className="h-5 w-5 text-emerald-600" />
               Générer un rapport
             </DialogTitle>
             <DialogDescription>
-              {selectedTemplate
-                ? `À partir du modèle "${selectedTemplate.name}"`
-                : "Sélectionnez les paramètres de génération"}
+              Générez un rapport à partir du modèle{" "}
+              <span className="font-semibold">
+                {selectedTemplate?.name || ""}
+              </span>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2794,24 +2989,15 @@ export function ReportsSection() {
               <Label htmlFor="gen-period">Période *</Label>
               <Input
                 id="gen-period"
-                placeholder={
-                  selectedTemplate?.periodFormat === "YYYY-QN"
-                    ? "2026-Q1"
-                    : selectedTemplate?.periodFormat === "YYYY"
-                    ? "2026"
-                    : "2026-01"
-                }
+                placeholder="2026-01 ou 2026-Q1"
                 value={genPeriod}
                 onChange={(e) => setGenPeriod(e.target.value)}
               />
-              <p className="text-[10px] text-muted-foreground">
-                Format attendu : {selectedTemplate?.periodFormat || "YYYY-MM"}
-              </p>
             </div>
             <div className="space-y-2">
               <Label>Direction (optionnel)</Label>
               <Select
-                value={genDirectionId}
+                value={genDirectionId || "__none__"}
                 onValueChange={(v) =>
                   setGenDirectionId(v === "__none__" ? "" : v)
                 }
@@ -2834,7 +3020,7 @@ export function ReportsSection() {
             <div className="space-y-2">
               <Label>Axe stratégique (optionnel)</Label>
               <Select
-                value={genStrategicAxisId}
+                value={genStrategicAxisId || "__none__"}
                 onValueChange={(v) =>
                   setGenStrategicAxisId(v === "__none__" ? "" : v)
                 }
@@ -2855,7 +3041,7 @@ export function ReportsSection() {
             <div className="space-y-2">
               <Label>Domaine ACBF (optionnel)</Label>
               <Select
-                value={genAcbfDomainId}
+                value={genAcbfDomainId || "__none__"}
                 onValueChange={(v) =>
                   setGenAcbfDomainId(v === "__none__" ? "" : v)
                 }
@@ -2901,18 +3087,17 @@ export function ReportsSection() {
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-emerald-600" />
+              <Eye className="h-5 w-5 text-emerald-600" />
               Détails du rapport
             </DialogTitle>
             <DialogDescription>
-              {selectedReport?.title || "Détails du rapport"}
+              {selectedReport?.title || ""}
             </DialogDescription>
           </DialogHeader>
           {selectedReport && (
-            <ScrollArea className="max-h-[75vh]">
+            <ScrollArea className="max-h-[70vh]">
               <div className="space-y-4 p-1">
-                {/* Metadata */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs text-muted-foreground">
                       Modèle
@@ -2925,12 +3110,23 @@ export function ReportsSection() {
                     <Label className="text-xs text-muted-foreground">
                       Période
                     </Label>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] mt-1"
-                    >
+                    <p className="text-sm text-slate-900 dark:text-white mt-1">
                       {selectedReport.period}
-                    </Badge>
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Type</Label>
+                    <div className="mt-1">
+                      <Badge
+                        className={`text-[10px] border-0 ${
+                          TYPE_COLORS[selectedReport.type] || ""
+                        }`}
+                      >
+                        {selectedReport.type}
+                      </Badge>
+                    </div>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">
@@ -2947,17 +3143,15 @@ export function ReportsSection() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Type</Label>
-                    <div className="mt-1">
-                      <Badge
-                        className={`text-[10px] border-0 ${
-                          TYPE_COLORS[selectedReport.type] || ""
-                        }`}
-                      >
-                        {selectedReport.type}
-                      </Badge>
-                    </div>
+                    <Label className="text-xs text-muted-foreground">
+                      Généré le
+                    </Label>
+                    <p className="text-sm text-slate-900 dark:text-white mt-1">
+                      {formatDateTime(selectedReport.generatedAt)}
+                    </p>
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs text-muted-foreground">
                       Généré par
@@ -2966,77 +3160,52 @@ export function ReportsSection() {
                       {selectedReport.generatedBy?.name || "—"}
                     </p>
                   </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">
-                      Généré le
-                    </Label>
-                    <p className="text-sm text-slate-900 dark:text-white mt-1">
-                      {formatDateTime(selectedReport.generatedAt)}
-                    </p>
-                  </div>
                   {selectedReport.validatedBy && (
                     <div>
                       <Label className="text-xs text-muted-foreground">
                         Validé par
                       </Label>
                       <p className="text-sm text-slate-900 dark:text-white mt-1">
-                        {selectedReport.validatedBy.name}
-                      </p>
-                    </div>
-                  )}
-                  {selectedReport.validatedAt && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Validé le
-                      </Label>
-                      <p className="text-sm text-slate-900 dark:text-white mt-1">
-                        {formatDateTime(selectedReport.validatedAt)}
-                      </p>
-                    </div>
-                  )}
-                  {selectedReport.direction && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Direction
-                      </Label>
-                      <p className="text-sm text-slate-900 dark:text-white mt-1">
-                        {selectedReport.direction.name}
-                      </p>
-                    </div>
-                  )}
-                  {selectedReport.strategicAxis && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Axe stratégique
-                      </Label>
-                      <p className="text-sm text-slate-900 dark:text-white mt-1">
-                        {selectedReport.strategicAxis.name}
-                      </p>
-                    </div>
-                  )}
-                  {selectedReport.acbfDomain && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Domaine ACBF
-                      </Label>
-                      <p className="text-sm text-slate-900 dark:text-white mt-1">
-                        {selectedReport.acbfDomain.name}
+                        {selectedReport.validatedBy.name}{" "}
+                        <span className="text-muted-foreground">
+                          ({formatDateTime(selectedReport.validatedAt)})
+                        </span>
                       </p>
                     </div>
                   )}
                 </div>
-
-                {/* Summary */}
-                {selectedReport.summary && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">
-                      Résumé exécutif
-                    </Label>
-                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg mt-1">
-                      <p className="text-sm text-slate-900 dark:text-white whitespace-pre-wrap">
-                        {selectedReport.summary}
-                      </p>
-                    </div>
+                {(selectedReport.direction || selectedReport.strategicAxis || selectedReport.acbfDomain) && (
+                  <div className="grid grid-cols-3 gap-4">
+                    {selectedReport.direction && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Direction
+                        </Label>
+                        <p className="text-sm text-slate-900 dark:text-white mt-1">
+                          {selectedReport.direction.name}
+                        </p>
+                      </div>
+                    )}
+                    {selectedReport.strategicAxis && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Axe stratégique
+                        </Label>
+                        <p className="text-sm text-slate-900 dark:text-white mt-1">
+                          {selectedReport.strategicAxis.name}
+                        </p>
+                      </div>
+                    )}
+                    {selectedReport.acbfDomain && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">
+                          Domaine ACBF
+                        </Label>
+                        <p className="text-sm text-slate-900 dark:text-white mt-1">
+                          {selectedReport.acbfDomain.name}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3054,27 +3223,19 @@ export function ReportsSection() {
               </div>
             </ScrollArea>
           )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setViewReportDialogOpen(false)}
-            >
-              Fermer
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Archive/Restore AlertDialog */}
+      {/* Archive/Restore Dialog */}
       <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {archiveTarget?.isActive ? "Confirmer l'archivage" : "Confirmer la restauration"}
+              {archiveTarget?.isActive ? "Archiver" : "Restaurer"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {archiveTarget?.isActive
-                ? `Êtes-vous sûr de vouloir archiver "${archiveTarget?.name}" ? Cette action peut être annulée ultérieurement.`
+                ? `Êtes-vous sûr de vouloir archiver "${archiveTarget?.name}" ?`
                 : `Êtes-vous sûr de vouloir restaurer "${archiveTarget?.name}" ?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -3082,9 +3243,12 @@ export function ReportsSection() {
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={saveArchive}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className={
+                archiveTarget?.isActive
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              }
             >
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {archiveTarget?.isActive ? "Archiver" : "Restaurer"}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
+import { getIpAndUserAgent } from "@/lib/request-context";
+import {
+  updateReportTemplateSchema,
+  generateReportSchema,
+  reportActionSchema,
+} from "@/lib/validations";
 import { z } from "zod";
 
 // ============================================================
@@ -106,29 +112,6 @@ export async function GET(
 // PUT /api/reports/[id] — Mettre à jour un modèle de rapport
 // ============================================================
 
-const updateTemplateSchema = z.object({
-  code: z.string().min(1, "Le code est requis").optional(),
-  name: z.string().min(1, "Le nom est requis").optional(),
-  description: z.string().optional().nullable(),
-  type: z
-    .enum([
-      "Mensuel",
-      "Trimestriel",
-      "Annuel",
-      "ACBF",
-      "Par axe",
-      "Par direction",
-      "Personnalisé",
-    ])
-    .optional(),
-  category: z
-    .enum(["Général", "Stratégique", "Opérationnel", "ACBF", "Finance"])
-    .optional(),
-  periodFormat: z.enum(["YYYY-MM", "YYYY-QN", "YYYY", "custom"]).optional(),
-  sections: z.string().optional().nullable(),
-  filters: z.string().optional().nullable(),
-});
-
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -139,9 +122,10 @@ export async function PUT(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
+    // M9 fix: Use reports:update instead of reports:write
     const hasAccess =
       userHasPermission(currentUser, "reports:create") ||
-      userHasPermission(currentUser, "reports:write");
+      userHasPermission(currentUser, "reports:update");
     if (!hasAccess) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
@@ -173,7 +157,20 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validated = updateTemplateSchema.parse(body);
+    const validated = updateReportTemplateSchema.parse(body);
+
+    // E5 fix: Check for duplicate code on update
+    if (validated.code !== undefined && validated.code !== existingTemplate.code) {
+      const duplicate = await db.reportTemplate.findUnique({
+        where: { code: validated.code },
+      });
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "Un modèle avec ce code existe déjà" },
+          { status: 409 }
+        );
+      }
+    }
 
     // Build update data
     const updateData: Record<string, unknown> = {};
@@ -199,6 +196,9 @@ export async function PUT(
       },
     });
 
+    // C1 fix: Include IP and User-Agent in audit logs
+    const { ip, userAgent } = getIpAndUserAgent(request);
+
     // Audit log with oldValue/newValue comparison
     const oldValue: Record<string, unknown> = {};
     const newValue: Record<string, unknown> = {};
@@ -216,6 +216,8 @@ export async function PUT(
         oldValue: JSON.stringify(oldValue),
         newValue: JSON.stringify(newValue),
         details: `Mise à jour du modèle de rapport ${updatedTemplate.name}`,
+        ipAddress: ip,
+        userAgent: userAgent,
       },
     });
 
@@ -236,18 +238,6 @@ export async function PUT(
 // PATCH /api/reports/[id] — Actions: generate, validate, reject, archive, restore
 // ============================================================
 
-const generateReportSchema = z.object({
-  action: z.literal("generate"),
-  period: z.string().min(1, "La période est requise"),
-  directionId: z.string().optional().nullable(),
-  strategicAxisId: z.string().optional().nullable(),
-  acbfDomainId: z.string().optional().nullable(),
-});
-
-const actionSchema = z.object({
-  action: z.enum(["validate", "reject", "archive", "restore", "template-archive", "template-restore"]),
-});
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -260,7 +250,19 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action } = body as { action: string };
+
+    // C4 fix: Validate action body before switch
+    const actionCheck = z.object({ action: z.string() }).safeParse(body);
+    if (!actionCheck.success) {
+      return NextResponse.json(
+        { error: "Action invalide", details: actionCheck.error.issues },
+        { status: 400 }
+      );
+    }
+    const { action } = actionCheck.data;
+
+    // C1 fix: Get IP and User-Agent once for all audit logs
+    const { ip, userAgent } = getIpAndUserAgent(request);
 
     // ============================================================
     // GENERATE — Create a new Report from a template
@@ -372,7 +374,6 @@ export async function PATCH(
         evidenceVerified,
         raciCount,
         activitiesWithRaciCount,
-        kpiAvgAchievement,
         totalActivities,
       ] = await Promise.all([
         // Activities count by status
@@ -443,15 +444,26 @@ export async function PATCH(
           },
         }),
 
-        // KPI average achievement rate
-        db.kpiDefinition.aggregate({
-          where: kpiWhere,
-          _avg: { currentValue: true, targetValue: true },
-        }),
-
         // Total activities count
         db.activity.count({ where: activityWhere }),
       ]);
+
+      // E7 fix: KPI average achievement — compute properly from individual rates
+      const kpiDefinitions = await db.kpiDefinition.findMany({
+        where: kpiWhere,
+        select: { currentValue: true, targetValue: true },
+      });
+      const kpiAchievementRates = kpiDefinitions
+        .filter((k) => k.targetValue && k.targetValue > 0)
+        .map((k) => (k.currentValue || 0) / k.targetValue);
+      const kpiAvgAchievementRate =
+        kpiAchievementRates.length > 0
+          ? Math.round(
+              (kpiAchievementRates.reduce((a, b) => a + b, 0) /
+                kpiAchievementRates.length) *
+                1000
+            ) / 10
+          : 0;
 
       // Process aggregation data
       // By status
@@ -520,13 +532,6 @@ export async function PATCH(
       const raciCoverage =
         totalActivities > 0
           ? Math.round((activitiesWithRaciCount / totalActivities) * 1000) / 10
-          : 0;
-
-      const kpiAvgTarget = kpiAvgAchievement._avg.targetValue || 0;
-      const kpiAvgCurrent = kpiAvgAchievement._avg.currentValue || 0;
-      const kpiAvgAchievementRate =
-        kpiAvgTarget > 0
-          ? Math.round((kpiAvgCurrent / kpiAvgTarget) * 1000) / 10
           : 0;
 
       // Compose aggregated data
@@ -610,7 +615,7 @@ export async function PATCH(
         },
       });
 
-      // Audit log
+      // Audit log — C1 fix
       await db.auditLog.create({
         data: {
           userId: currentUser.id,
@@ -624,6 +629,8 @@ export async function PATCH(
             templateName: template.name,
           }),
           details: `Génération du rapport ${report.title} à partir du modèle ${template.name}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -634,8 +641,9 @@ export async function PATCH(
     // TEMPLATE-ARCHIVE — Soft delete a template
     // ============================================================
     if (action === "template-archive") {
-      actionSchema.parse(body);
-      const hasAccess = userHasPermission(currentUser, "reports:create");
+      reportActionSchema.parse(body);
+      // C3 fix: Use reports:archive instead of reports:create
+      const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
@@ -673,6 +681,8 @@ export async function PATCH(
             deletedAt: updatedTemplate.deletedAt,
           }),
           details: `Archive du modèle de rapport ${existingTemplate.name}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -683,8 +693,9 @@ export async function PATCH(
     // TEMPLATE-RESTORE — Unarchive a template
     // ============================================================
     if (action === "template-restore") {
-      actionSchema.parse(body);
-      const hasAccess = userHasPermission(currentUser, "reports:create");
+      reportActionSchema.parse(body);
+      // C3 fix: Use reports:archive instead of reports:create
+      const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
@@ -722,6 +733,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration du modèle de rapport ${existingTemplate.name}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -746,7 +759,7 @@ export async function PATCH(
     // VALIDATE — Set status to "Validé" (only from "Généré")
     // ============================================================
     if (action === "validate") {
-      const validated = actionSchema.parse(body);
+      reportActionSchema.parse(body);
       const hasAccess = userHasPermission(currentUser, "reports:validate");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -785,6 +798,8 @@ export async function PATCH(
             validatedById: currentUser.id,
           }),
           details: `Validation du rapport ${existingReport.title}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -797,7 +812,7 @@ export async function PATCH(
     // REJECT — Set status to "Rejeté" (only from "Généré")
     // ============================================================
     if (action === "reject") {
-      actionSchema.parse(body);
+      reportActionSchema.parse(body);
       const hasAccess = userHasPermission(currentUser, "reports:validate");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -827,6 +842,8 @@ export async function PATCH(
           oldValue: JSON.stringify({ status: "Généré" }),
           newValue: JSON.stringify({ status: "Rejeté" }),
           details: `Rejet du rapport ${existingReport.title}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -839,8 +856,9 @@ export async function PATCH(
     // ARCHIVE — Soft delete
     // ============================================================
     if (action === "archive") {
-      actionSchema.parse(body);
-      const hasAccess = userHasPermission(currentUser, "reports:create");
+      reportActionSchema.parse(body);
+      // C3 fix: Use reports:archive instead of reports:create
+      const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
@@ -869,6 +887,8 @@ export async function PATCH(
             deletedAt: updatedReport.deletedAt,
           }),
           details: `Archive du rapport ${existingReport.title}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 
@@ -879,8 +899,9 @@ export async function PATCH(
     // RESTORE — Unarchive
     // ============================================================
     if (action === "restore") {
-      actionSchema.parse(body);
-      const hasAccess = userHasPermission(currentUser, "reports:create");
+      reportActionSchema.parse(body);
+      // C3 fix: Use reports:archive instead of reports:create
+      const hasAccess = userHasPermission(currentUser, "reports:archive");
       if (!hasAccess) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
@@ -909,6 +930,8 @@ export async function PATCH(
           }),
           newValue: JSON.stringify({ isActive: true, deletedAt: null }),
           details: `Restauration du rapport ${existingReport.title}`,
+          ipAddress: ip,
+          userAgent: userAgent,
         },
       });
 

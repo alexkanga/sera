@@ -478,6 +478,9 @@ model ReportTemplate {
   createdBy       User?     @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   reports         Report[]
 
+  @@index([type])
+  @@index([category])
+  @@index([isActive, deletedAt])
   @@map("report_templates")
 }
 
@@ -513,6 +516,11 @@ model Report {
   strategicAxis   StrategicAxis? @relation(fields: [strategicAxisId], references: [id], onDelete: SetNull)
   acbfDomain      AcbfDomain?    @relation(fields: [acbfDomainId], references: [id], onDelete: SetNull)
 
+  @@index([templateId])
+  @@index([status])
+  @@index([type])
+  @@index([generatedAt])
+  @@index([isActive, deletedAt])
   @@map("reports")
 }
 

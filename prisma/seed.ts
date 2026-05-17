@@ -255,6 +255,8 @@ async function main() {
     // Module Reports
     { code: "reports:read", name: "Lire les rapports", module: "reports" },
     { code: "reports:create", name: "Créer des rapports", module: "reports" },
+    { code: "reports:update", name: "Modifier des rapports", module: "reports" },
+    { code: "reports:archive", name: "Archiver des rapports", module: "reports" },
     { code: "reports:validate", name: "Valider des rapports", module: "reports" },
     { code: "reports:*", name: "Gestion complète des rapports", module: "reports" },
 
@@ -307,7 +309,7 @@ async function main() {
         "org:read", "strategic:read", "acbf:read",
         "pta:read", "pta:validate", "pta:create", "pta:update",
         "raci:read", "gantt:read", "dashboard:read",
-        "docs:read", "reports:read", "reports:create", "reports:validate",
+        "docs:read", "reports:read", "reports:create", "reports:update", "reports:archive", "reports:validate",
         "notifications:read", "export:read", "export:execute", "import:execute",
         "audit:read",
       ],
@@ -324,7 +326,7 @@ async function main() {
         "raci:read", "raci:create", "raci:update",
         "gantt:read", "dashboard:read",
         "docs:read", "docs:create",
-        "reports:read", "reports:create", "reports:validate",
+        "reports:read", "reports:create", "reports:update", "reports:archive", "reports:validate",
         "notifications:read", "export:read", "export:execute", "import:execute",
         "audit:read",
       ],

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 
@@ -6,7 +6,7 @@ import { getCurrentUser, userHasPermission } from "@/lib/permissions";
 // GET /api/reports/stats — Statistiques de la section rapports
 // ============================================================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const currentUser = await getCurrentUser();
     if (!currentUser) {
@@ -36,6 +36,8 @@ export async function GET() {
       reportsByStatusRaw,
       reportsByTypeRaw,
       lastGeneratedReport,
+      archivedReportsCount,
+      recentReportsRaw,
     ] = await Promise.all([
       // Total active templates
       db.reportTemplate.count({ where: templateWhere }),
@@ -68,6 +70,28 @@ export async function GET() {
           },
         },
       }),
+
+      // Archived reports count
+      db.report.count({
+        where: { deletedAt: { not: null } },
+      }),
+
+      // Recent 5 reports
+      db.report.findMany({
+        where: reportWhere,
+        orderBy: { generatedAt: "desc" as const },
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          period: true,
+          status: true,
+          generatedAt: true,
+          template: {
+            select: { name: true },
+          },
+        },
+      }),
     ]);
 
     // Process reports by status
@@ -91,13 +115,28 @@ export async function GET() {
       count,
     }));
 
+    // E1 fix: Return full stats matching frontend ReportStats interface
     return NextResponse.json({
       data: {
         totalTemplates,
         totalReports,
-        reportsByStatus,
-        reportsByType,
-        lastGeneratedReport: lastGeneratedReport || null,
+        generatedReports: statusMap.get("Généré") || 0,
+        validatedReports: statusMap.get("Validé") || 0,
+        rejectedReports: statusMap.get("Rejeté") || 0,
+        draftReports: statusMap.get("Brouillon") || 0,
+        archivedReports: archivedReportsCount,
+        lastGeneration: lastGeneratedReport?.generatedAt || null,
+        pendingValidation: statusMap.get("Généré") || 0,
+        byStatus: reportsByStatus,
+        byType: reportsByType,
+        recentReports: recentReportsRaw.map((r) => ({
+          id: r.id,
+          title: r.title,
+          period: r.period,
+          status: r.status,
+          generatedAt: r.generatedAt,
+          templateName: r.template?.name || "—",
+        })),
       },
     });
   } catch (error) {
